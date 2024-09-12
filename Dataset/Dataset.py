@@ -1,6 +1,6 @@
 import cv2
 from os import listdir
-from os.path import join, isdir
+from os.path import join, isdir, exists
 from types import FunctionType as function
 import matplotlib.pyplot as plt
 import tensorflow as tf
@@ -11,131 +11,169 @@ from .Data import *
 
 class Dataset:
 
-    def __init__(self, data: (str | function | list), labels: (Label | None) = None, shuffle: bool = False):
-        if isinstance(labels, str):
-            if not labels in listdir(data):
-                raise Exception("Labels not found")
-    
-            labels = LabelFile(label=None, path_files=join(data, labels))
+    def __init__(self, data: (str | list), labels = None, output_shape: int = None, shuffle: bool = False, 
+                 split: bool = True, test_size: float = 0.2):
 
-        elif not isinstance(labels, Label):
-            labels = Label(labels)
+        if not isinstance(labels, Labels):
+            path = False
+            if "/" in labels:
+                if not exists(labels):
+                    raise Exception(f"Labels path not found: {labels}")
+                
+                path = True
 
-        self.data = data
+            labels = Labels(labels, path=path, output_shape=output_shape)
 
-        self.shuffle = shuffle
+        self.data = Data(data)
         self.labels = labels
 
-    def generator_data(self, args = {}) -> iter:
-        if self.labels is None:
-            return self.get_data()
-        
-        for data in self.get_data():
-            
-            if isinstance(data, Image):
-                image = data
-                if args.get("rotate", False):
-                    image.rotate = True
-                    for _ in range(4):
-                        image_np = image.get_data()
-                        label = self.labels.get_label(image)
-                        yield image_np, label
-                    continue
+        self.shuffle = shuffle
+        self.split = split
+        self.test_size = test_size
 
-                data = image.get_data()
-                label = self.labels.get_label(image)
-            else:
-                label = self.labels.get_label(data)
 
-            if not label or not data:
-                continue
-            
+    def generator_data(self) -> iter:
+        if self.labels:
+            yield from self.get_data_label()
+        else:
+            for data in self:
+                yield data
+
+
+    def get_data_label(self):
+
+        for data, label in zip(self, self.labels):
+            label = label.get_label()
             yield data, label
 
 
-    def create_data(self, shape_input = None, shape_output = None, args = {}):
+    def create_data(self) -> tf.data.Dataset:
         ds = tf.data.Dataset.from_generator(
-                lambda: self.generator_data(args),
+                self.generator_data,
                 output_signature=(
-                    tf.TensorSpec(shape=shape_input if shape_input else (None,),),
-                    tf.TensorSpec(shape=shape_output if shape_output else (None,),),
-                )
+                    tf.TensorSpec(shape=self.shape),
+                    tf.TensorSpec(shape=self.labels.shape),
+                ),
             )
+        
+        if self.shuffle:
+            ds = ds.shuffle(buffer_size=len(self))
         
         return ds
     
-    def get_ds(self, shape_input = None, shape_output = None, args = {}):
-        return self.create_data(shape_input=shape_input, shape_output=shape_output, args=args)
+    def __iter__(self):
+        yield from self.data.get_data()
+    
+    def get_ds(self):
+        if self.split:
+            ds = self.create_data()
+            train_size = int(len(self) * (1 - self.test_size))
 
-    def get_data_label(self, data_gen, label_gen):
-        for data, label in zip(data_gen, label_gen):
+            train_ds = ds.take(train_size)
+            test_ds = ds.skip(train_size)
+            return train_ds, test_ds
+        
+        return self.create_data()
 
-            if not label or not data:
-                continue
-
-            yield data, label
-
-    def get_data(self):
-        if isinstance(self.data, str):
-            yield from self.data
-
-        elif isinstance(self.data, function):
-            yield from self.data()
-
-        elif isinstance(self.data, list):
-            yield from self.data
+    def __len__(self):
+        return len(self.data)
+    
+    @property
+    def shape(self):
+        return self.data.shape
 
 
 class DatasetImage(Dataset):
 
-    def __init__(self, data_path: str, labels: (str | function | list | Label) = "labels", 
-                 extension: str = ".png", desired_size = (500, 500, 3), 
-                 shuffle: bool = False):
-
-        super().__init__(data_path, labels, shuffle)
+    def __init__(self, data_path: str, labels: (str | function | list | Label) = "labels/", 
+                 output_shape: int = None, extension: str = ".png", 
+                 desired_size = (500, 500, 3), rotate: bool = False,
+                 shuffle: bool = False, split: bool = True, test_size: float = 0.2):
+        
+        super().__init__(data=None, labels=labels, output_shape=output_shape, shuffle=shuffle, split=split, test_size=test_size)
 
         self.data_path = data_path
 
         self.desired_size = desired_size
         self.extension = extension
+        self.rot = rotate
 
-    def get_ds(self, shape_output = None, rotate: bool = False):
-        return super().create_data(shape_input=self.desired_size, shape_output=shape_output, args={"rotate": rotate})
     
-    def get_files(self, path: str):
+    def get_files(self, path: str, files_only: bool = True):
         files = listdir(path)
 
-        if self.shuffle:
-            random.shuffle(files)
-
-        return files
+        return filter(lambda x: x.endswith(self.extension), files) if files_only else files
     
     def get_path_images(self):
-        files = self.get_files(self.data_path)
-
+        files = self.get_files(self.data_path, False)
         for image_file in files:
-
-            self.file_name = image_file
             path_data = join(self.data_path, image_file)
             if isdir(path_data):
-                
                 for image_file in self.get_files(path_data):
                     yield join(path_data, image_file)
-
-            elif not image_file.endswith(self.extension):
-                continue
-
             else:
                 yield path_data
-    
-    def get_data(self):
+
+    def get_data_from_path(self):
         for path_file in self.get_path_images():
             image = cv2.imread(path_file)
 
             if image is None:
                 continue
             
-            yield Image(image, self.file_name, path_file, self.desired_size)
+            yield Image(image, path_file, self.desired_size, self.rot)
+
+    def gen_rotate(self, data: Image):
+        for _ in range(4):
+            image = data.get_data()
+            label = self.labels[data].get_label()
+            if label is None:
+                continue
+
+            yield image, label.get_label()
+        
+        self.labels.clear_buffer()
+
+    def get_data_label(self):
+        for data in self:
+            if self.rot:
+                yield from self.gen_rotate(data)
+                continue
+
+            image = data.get_data()
+            label = self.labels[data].get_label()
+            if label is None:
+                continue
+
+            yield image, label.get_label()
+
+    def __iter__(self):
+        yield from self.get_data_from_path()
+
+
+    def get_output_shape(self):
+        return self.desired_size
+    
+
+    def get_col_files(self):
+        files_col = 0
+        for file in self.get_files(self.data_path, False):
+            if isdir(join(self.data_path, file)):
+                files_col += len(list(self.get_files(join(self.data_path, file))))
+            else:
+                if not file.endswith(self.extension):
+                    continue
+                files_col += 1
+
+        return files_col
+
+
+    def __len__(self):
+        files_col = self.get_col_files()
+        if self.rot:
+            files_col *= 4
+
+        return files_col
 
     @staticmethod
     def show_img(img, label=None, polygon = False):
@@ -158,3 +196,6 @@ class DatasetImage(Dataset):
         plt.show()
         
 
+    @property
+    def shape(self):
+        return self.desired_size

@@ -69,7 +69,7 @@ class Model:
         if self.model is None:
             input_shape = ds.element_spec[0].shape
             output_shape = ds.element_spec[1].shape[0]
-            print(ds.element_spec[0], ds.element_spec[1])
+            print(f"Input shape: {input_shape}, output shape: {output_shape}")
             self.model = self.create_model(input_shape, output_shape)
 
         chekpoint = self.add_checkpoint()
