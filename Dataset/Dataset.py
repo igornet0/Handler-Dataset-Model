@@ -104,15 +104,29 @@ class DatasetImage(Dataset):
 
         return filter(lambda x: x.endswith(self.extension), files) if files_only else files
     
+    def gen_image(self, path_file: str):
+        for file in self.get_files(path_file):
+            yield join(path_file, file)
+    
     def get_path_images(self):
         files = self.get_files(self.data_path, False)
+        buffer_gen = {}
         for image_file in files:
             path_data = join(self.data_path, image_file)
             if isdir(path_data):
-                for image_file in self.get_files(path_data):
-                    yield join(path_data, image_file)
+                buffer_gen[path_data] = self.gen_image(path_data)
             else:
                 yield path_data
+
+        if buffer_gen:
+            buffer_size = 32
+            while True:
+                for path_file, gen in buffer_gen.items():
+                    for _ in range(buffer_size):
+                        try:
+                            yield next(gen)
+                        except StopIteration:
+                            buffer_gen[path_data] = self.gen_image(path_file)
 
     def get_data_from_path(self):
         for path_file in self.get_path_images():
