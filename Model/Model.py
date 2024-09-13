@@ -2,6 +2,7 @@ import tensorflow as tf
 from tensorflow.keras.layers import Conv2D, MaxPooling2D, Flatten, Dense, Dropout # type: ignore
 from tensorflow.keras.models import Sequential # type: ignore
 import numpy as np
+from Dataset import Dataset
 
 class Model:
 
@@ -15,7 +16,7 @@ class Model:
         if self.model is None:
             raise Exception("Model is not loaded")
 
-        return self.model.predict(data)    
+        return self.model.predict(np.array([data]))    
 
     def load_model(self, path: str = "Model.keras"):
         self.model = tf.keras.models.load_model(path)
@@ -35,7 +36,7 @@ class Model:
 
         return checkpoint
     
-    def create_model(self, input_shape: tuple = (500, 500, 3), output_shape: int = 1):
+    def create_model(self, input_shape: tuple = (500, 500, 3), output_shape: int = 1, classification: bool = False):
         self.model = Sequential([
             Conv2D(32, (3, 3), activation='relu', input_shape=input_shape),
             MaxPooling2D((2, 2)),
@@ -45,7 +46,7 @@ class Model:
             MaxPooling2D((2, 2)),
             Flatten(),
             Dense(64, activation='relu'),
-            Dense(output_shape, activation='linear')
+            Dense(output_shape, activation='linear' if not classification else 'softmax')
         ])
 
         self.model.compile(optimizer='adam', loss='mse', metrics=['mae'])
@@ -66,6 +67,20 @@ class Model:
 
     def train(self, ds, ds_test = None, epochs=200, batch_size=32):
 
+        steps_per_epoch = 10
+
+        if isinstance(ds, Dataset):
+            steps_per_epoch = len(ds)
+            if ds.split:
+                steps_per_epoch = int(len(ds) * (1 - ds.test_size))
+                validation_steps = int(len(ds) * ds.test_size) // batch_size
+                ds, ds_test = ds.get_ds()
+
+            else:
+                ds = ds.get_ds()
+            
+            steps_per_epoch //= batch_size
+
         if self.model is None:
             input_shape = ds.element_spec[0].shape
             output_shape = ds.element_spec[1].shape[0]
@@ -80,15 +95,15 @@ class Model:
             ds_test = ds_test.batch(batch_size).prefetch(tf.data.AUTOTUNE)
 
             history = self.model.fit(ds, epochs=epochs, 
-                                    steps_per_epoch=10,
                                     verbose=1, 
-                                    batch_size=batch_size, callbacks=[chekpoint],
-                                    validation_data=ds_test)
+                                    callbacks=[chekpoint],
+                                    validation_data=ds_test,
+                                    validation_steps=validation_steps,  
+                                    steps_per_epoch=steps_per_epoch)
         else:
-            history = self.model.fit(ds, epochs=epochs, 
-                                    steps_per_epoch=10,
-                                    verbose=1, 
-                                    batch_size=batch_size)
+            history = self.model.fit(ds, epochs=epochs,  
+                                    steps_per_epoch=steps_per_epoch, 
+                                    verbose=1)
         if self.save:
             self.save_model() 
 
