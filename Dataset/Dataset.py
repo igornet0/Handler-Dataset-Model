@@ -43,7 +43,10 @@ class Dataset:
     def get_data_label(self):
 
         for data, label in zip(self, self.labels):
-            label = label.get_label()
+            label = label.get()
+            if label is None:
+                continue
+
             yield data, label
 
 
@@ -55,9 +58,6 @@ class Dataset:
                     tf.TensorSpec(shape=self.labels.shape),
                 ),
             )
-        
-        if self.shuffle:
-            ds = ds.shuffle(buffer_size=len(self))
         
         return ds
     
@@ -86,11 +86,11 @@ class Dataset:
 class DatasetImage(Dataset):
 
     def __init__(self, data_path: str, labels: (str | function | list | Label) = "labels/", 
-                 output_shape: int = None, extension: str = ".png", 
+                 extension: str = ".png", 
                  desired_size = (500, 500, 3), rotate: bool = False,
                  shuffle: bool = False, split: bool = True, test_size: float = 0.2):
         
-        super().__init__(data=None, labels=labels, output_shape=output_shape, shuffle=shuffle, split=split, test_size=test_size)
+        super().__init__(data=None, labels=labels, output_shape=desired_size, shuffle=shuffle, split=split, test_size=test_size)
 
         self.data_path = data_path
 
@@ -119,7 +119,7 @@ class DatasetImage(Dataset):
                 yield path_data
 
         if buffer_gen:
-            buffer_size = 32
+            buffer_size = 5
             while True:
                 for path_file, gen in buffer_gen.items():
                     for _ in range(buffer_size):
@@ -140,26 +140,32 @@ class DatasetImage(Dataset):
     def gen_rotate(self, data: Image):
         for _ in range(4):
             image = data.get_data()
-            label = self.labels[data].get_label()
+            label = self.get_label(image).get()
             if label is None:
                 continue
 
-            yield image, label.get_label()
+            yield image, label
         
         self.labels.clear_buffer()
+
+    def get_label(self, data: Image) -> Label:
+        return self.labels[data].get_label()
 
     def get_data_label(self):
         for data in self:
             if self.rot:
-                yield from self.gen_rotate(data)
+                try:
+                    yield from self.gen_rotate(data)
+                except StopIteration:
+                    pass
                 continue
 
             image = data.get_data()
-            label = self.labels[data].get_label()
+            label = self.labels[data].get_label().get()
             if label is None:
                 continue
 
-            yield image, label.get_label()
+            yield image, label
 
     def __iter__(self):
         yield from self.get_data_from_path()

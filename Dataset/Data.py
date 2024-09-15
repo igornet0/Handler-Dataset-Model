@@ -30,6 +30,8 @@ class Image(Data):
         
         super().__init__(data)
 
+        self.image_original = Data(data.copy())
+
         self.path_data = path_data
         self.image_file = path_data.split(os.path.sep)[-1]
         self.size = data.shape
@@ -38,6 +40,9 @@ class Image(Data):
         self.extension = f".{self.path_data.split('.')[-1]}"
 
         self.resize = False
+
+    def get_image(self):
+        return self.image_original.data
 
 
     def resize_image(self, image):

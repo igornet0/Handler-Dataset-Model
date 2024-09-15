@@ -12,8 +12,11 @@ class Label:
     def __init__(self, label):
         self.label = label
                  
-    def get_label(self) -> list:
+    def get(self) -> list:
         if isinstance(self.label, list):
+            return self.label
+        
+        if self.label is None:
             return self.label
         
         return [self.label]
