@@ -23,6 +23,7 @@ class Model:
         return np.array(predict)
 
     def load_model(self, path: str = "Model.keras"):
+        self.name_model = path
         self.model = tf.keras.models.load_model(path)
     
     def save_model(self):

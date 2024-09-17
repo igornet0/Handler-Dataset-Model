@@ -39,6 +39,8 @@ class Dataset:
             for data in self:
                 yield data
 
+    def get_label(self, data: Data) -> Label:
+        return self.labels[data].get_label()
 
     def get_data_label(self):
 
@@ -147,9 +149,6 @@ class DatasetImage(Dataset):
             yield image, label
         
         self.labels.clear_buffer()
-
-    def get_label(self, data: Image) -> Label:
-        return self.labels[data].get_label()
 
     def get_data_label(self):
         for data in self:

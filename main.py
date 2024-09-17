@@ -7,6 +7,7 @@ from Model import Model
 def get_classes(path, one_hot: bool=True):
         classes = {'Патент': [0, 0, 0, 0, 1], 'Миграционная карта': [1, 0, 0, 0, 0], 
                    'Паспорт': [0, 1, 0, 0, 0], 'Страница КПП': [0, 0, 1, 0, 0], 'Регистрация': [0, 0, 0, 1, 0]}
+        
         if not one_hot:
             classes = {x.index(max(x)): path for path, x in classes.items()}
         return classes
@@ -96,9 +97,7 @@ def test_model_classification(model: (Model | str), path_dataset_test="test"):
 
         if i % (batch_size // 10) == 0:
             print(f"{i}/{batch_size}")
-    print(stat)
-            
-            
+    print(stat)            
         
 
 def main():
@@ -106,6 +105,7 @@ def main():
     path_model_class = "ModelClassification250_1.keras"
 
     # train_model_detection(path_dataset_train="dataset_new", path_model=path_model_class, save_checkpoints=True)
+    train_model_classification(path_dataset_train="cash", path_model=path_model_class)
     train_model_classification(path_dataset_train="dataset_new", path_model=path_model_class)
     test_model_classification(path_model_class, path_dataset_test="dataset_new")
 
