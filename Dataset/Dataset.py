@@ -142,7 +142,7 @@ class DatasetImage(Dataset):
     def gen_rotate(self, data: Image):
         for _ in range(4):
             image = data.get_data()
-            label = self.get_label(image).get()
+            label = self.get_label(data).get()
             if label is None:
                 continue
 
@@ -160,7 +160,7 @@ class DatasetImage(Dataset):
                 continue
 
             image = data.get_data()
-            label = self.labels[data].get_label().get()
+            label = self.get_label(data).get()
             if label is None:
                 continue
 

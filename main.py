@@ -12,18 +12,13 @@ def get_classes(path, one_hot: bool=True):
             classes = {x.index(max(x)): path for path, x in classes.items()}
         return classes
 
-def train_model_detection(path_dataset_train="train", path_model=None, save_checkpoints=True):
-    batch_size = 32
-    epochs = 10
+def train_model_detection(path_dataset_train="train", path_model=None, save_checkpoints=True, batch_size=32, epochs=10):
 
     dataset_train = DatasetImage(path_dataset_train, 
                                  labels="train/labels", output_shape=8,
                                  shuffle=True, rotate=True)
 
-    # dataset_test = Dataset(path_dataset_test)
-
     ds, ds_test = dataset_train.get_ds()
-    # ds_test = dataset_test.get_data()
 
     model = Model(save=save_checkpoints, name_model="ModelDetection.keras")
     if path_model is not None:
@@ -31,9 +26,11 @@ def train_model_detection(path_dataset_train="train", path_model=None, save_chec
 
     model.train(ds, ds_test, batch_size=batch_size, epochs=epochs)
 
-def train_model_classification(path_dataset_train="train", path_model=None, save_checkpoints=True):
-    batch_size = 32
-    epochs = 50
+    return model
+
+def train_model_classification(path_dataset_train="train", path_model=None, 
+                               save_checkpoints=True, batch_size=32, epochs=10, 
+                               test: bool=False):
 
     label = get_classes(path_dataset_train)
     print(label)
@@ -60,7 +57,11 @@ def train_model_classification(path_dataset_train="train", path_model=None, save
         model.create_model(dataset_train.desired_size, labels.output_shape)
 
     model.train(dataset_train, batch_size=batch_size, epochs=epochs)
-    test_model_classification(model, path_dataset_train)
+    
+    if test: 
+        test_model_classification(model, path_dataset_train)
+
+    return model
 
 def test_model_classification(model: (Model | str), path_dataset_test="test"):
 

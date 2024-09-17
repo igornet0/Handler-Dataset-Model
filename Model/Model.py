@@ -13,6 +13,9 @@ class Model:
         self.model = None
         self.classification = classification
 
+    def set_save(self, save: bool):
+        self.save = save
+
     def predict(self, data: np.ndarray, map_f = None):
         if self.model is None:
             raise Exception("Model is not loaded")
