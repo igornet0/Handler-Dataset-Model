@@ -1,3 +1,3 @@
-from .Model import Model
+from .Model import ModelClassification, ModelPolygons, Model
 
-__all__ = ["Model"]
+__all__ = ["Model", "ModelClassification", "ModelPolygons"]

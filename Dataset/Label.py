@@ -1,7 +1,8 @@
 import json, random, math
-from os.path import join
+from os.path import join, isdir, isfile
 from os import listdir
 from types import FunctionType as function
+from typing import Callable, List, Union
 
 import numpy as np
 
@@ -21,37 +22,79 @@ class Label:
         
         return [self.label]
 
-class LabelFile:
+    def __len__(self):
+        if not isinstance(self.label, list):
+            return 0
+        return len(self.label)
 
-    def __init__(self, path_files: str):
+
+class LabelFile(Label):
+
+    def __init__(self, path_files: str) -> None:
         self.path = path_files
         self.extension = path_files.split(".")[-1]
         
-        self.label = self.get_file_data()
+        super().__init__(self.get_file_data())
 
-    def round_point(self, point):
-        return [round(p, 2) for p in point]
-    
+
     def get_file_data(self) -> list:
 
         if not self.path.endswith(self.extension):
             return None
         
-        with open(self.path) as file:
-            data = json.load(file)
-            
-        points = data.get("shapes", [{}])[0].get("points", data.get("points", []))
-        if not points:
+        if self.extension == "json":
+            with open(self.path) as file:
+                data = json.load(file)
+            return data.get("label", [])
+        
+        if self.extension == "txt":
+            with open(self.path) as file:
+                data = file.read().splitlines()
+            return data
+        
+        return None
+
+
+
+class LabelPolygon(Label):
+
+    def __init__(self, label = None) -> None:
+        if isinstance(label, str):
+            label = self.get_file_data(label)
+
+        super().__init__(label)
+
+
+    def get_file_data(self, path_file: str):
+        if path_file is None:
             return None
         
-        label = [coord for point in points for coord in self.round_point(point)]
+        with open(path_file) as file:
+            data = json.load(file)
+            
+        shapes = data.get("shapes", [{}])
+        labels = []
+        for shape in shapes:
+            points = shape.get("points", [])
+            if not points:
+                continue
+            label = [coord for point in points for coord in self.round(point)]
+            labels.append(label)
 
-        return label
+        self.label = labels
 
-    def get_label(self) -> list:
         return self.label
+    
 
-    def resize_points(self, shape, shape_new):
+    def round(self, label):
+        if isinstance(label[0], list):
+            label = np.array(label).reshape((-1, 2))
+            return [self.round(point) for point in label]
+        
+        return [round(x) for x in label]
+
+
+    def resize(self, shape, shape_new):
         new_points = []
         points = np.array(self.label)
         points = points.reshape((-1, 2))
@@ -64,7 +107,8 @@ class LabelFile:
         self.label = new_points
         return self.label
 
-    def back_coordinates(self, width, height):
+
+    def back(self, width, height):
         new_points = []
         points = np.array(self.label)
         points = points.reshape((-1, 2))
@@ -77,7 +121,8 @@ class LabelFile:
         self.label = new_points
         return self.label
 
-    def rotate_polygon(self, angle_degrees, center_x, center_y):
+
+    def rotate(self, angle_degrees, center_x, center_y):
 
         points = np.array(self.label)
         points = points.reshape((-1, 2))
@@ -107,68 +152,210 @@ class LabelFile:
         self.label = rotated_points
         return self.label
     
-
+    
 class Labels:
 
-    def __init__(self, labels: (str | function | list | Label) = "labels", path: bool = False, output_shape: int = None):
-        
+    def __init__(self, labels, output_shape: int = None, filter: Callable = None, map: Callable = None) -> None:
+
         self.labels = labels
-        self.path = path
         self.args = None
 
         self.buffer = {}
 
         self.output_shape = output_shape
 
-    def get_labels_from_path(self):
-        for labels_file in listdir(self.labels):
-            yield LabelFile(labels_file, self.path, extension=labels_file.split('.')[-1])
-    
-    
-    def searh_label_path(self, name_file: str):
-        for labels_file in listdir(self.labels):
-            if labels_file.split('.')[0] == name_file.split('.')[0]:
-                return join(self.labels, labels_file)
+        self.filter = filter
+        self.map = map
             
+
     def clear_buffer(self):
         self.buffer.clear()
+
+
+    def to_type(self, label):
+        if isinstance(label, Label):
+            return label
+        else:
+            return Label(label)
+
 
     def __getitem__(self, item):
         self.args = item        
         return self
+    
 
     def __iter__(self):
-        if self.path:
-            yield from self.get_labels_from_path()
+        if isinstance(self.labels, list):
+            for label in self.labels:
+                yield self.to_type(label)
+
+        elif isinstance(label, function):
+            return Label(label(self.args))
         else:
-            if isinstance(self.labels, list):
-                for label in self.labels:
-                    if isinstance(label, Label) or isinstance(label, LabelFile):
-                        yield label
-                    else:
-                        yield Label(label)
-            else:
-                return self.get_label()
+            return self.get_label()
 
+    def process_label(self, label):
+        if self.filter is not None:
+            label = self.filter(label)
+
+        if self.map is not None:
+            label = self.map(label)
+
+        return label
+        
     def get_label(self) -> Label:
-        if not self.args is None:
-            item = self.args
-            if isinstance(item, Image) and self.path:
-                label: LabelFile = self.buffer.setdefault(item.path_data, 
-                                                        LabelFile(self.searh_label_path(item.image_file)))
-                
-                if item.resize:
-                    label.resize_points(item.size, item.desired_size)
-            
-                if item.rotate:
-                    label.rotate_polygon(-90, item.desired_size[0]/2, item.desired_size[1]/2)
-
-                return label
-            
-        if isinstance(self.labels, function):
-            return Label(self.labels(self.args))
-
+        label = self.labels
+        label = self.process_label(label)
+        if isinstance(label, Label):
+            return label
+        else:
+            return Label(label)
 
     @property
     def shape(self):
         return self.output_shape
+
+    def __len__(self):
+        return len(self.labels)
+
+
+class LabelsFile(Labels):
+
+    def __init__(self, labels: Union[str, Callable, List, Label] = "labels", extension: str = ".json",
+                 output_shape: int = None, filter: Callable = None, map: Callable = None) -> None:
+        
+        super().__init__(labels, output_shape, filter, map)
+
+        self.extension = extension
+
+
+    def to_type(self, label):
+        if isinstance(label, LabelFile):
+            return label
+        else:
+            return LabelFile(label)
+
+    def searh_label_path(self, name_file_search: str):
+        if not f"{name_file_search.split('.')[0]}{self.extension}" in listdir(self.labels):
+            for dir in listdir(self.labels):
+                if not isdir(join(self.labels, dir)):
+                    continue
+                if f"{name_file_search.split('.')[0]}{self.extension}" in listdir(join(self.labels, dir)):
+                    return join(self.labels, dir, f"{name_file_search.split('.')[0]}{self.extension}")
+            return None
+        return join(self.labels, f"{name_file_search.split('.')[0]}{self.extension}")
+
+
+    def get_files(self, path: str, files_only: bool = True):
+        
+        files = listdir(path)
+
+        return filter(lambda x: x.endswith(self.extension), files) if files_only else files
+
+
+    def gen_buffer(self, buffer_gen: dict):
+        for path_data, gen in buffer_gen.items():
+            while True:
+                try:
+                    yield join(path_data, next(gen))
+                except StopIteration:
+                    break
+
+
+    def get_path(self, getbuffer: bool = False):
+        files = self.get_files(self.labels, False)
+        buffer_gen = {}
+        for image_file in files:
+            path_data = join(self.labels, image_file)
+            if isdir(path_data):
+                buffer_gen[path_data] = self.get_files(path_data)
+            else:
+                yield path_data
+
+        if buffer_gen and not getbuffer:
+            yield from self.gen_buffer(buffer_gen)
+        else:
+            return buffer_gen
+        
+
+    def get_label_from_path(self):
+        for path_file in self.get_path():
+            yield LabelFile(path_file)
+
+
+    def __iter__(self):
+        for label in self.get_label_from_path():
+            label = self.process_label(label)
+            if label is None:
+                continue
+
+            yield self.to_type(label)
+
+
+    def get_label(self) -> LabelFile:
+
+        if self.args is not None:
+            item = self.args
+            if isinstance(item, Image):
+                label: LabelFile = self.buffer.setdefault(item.path_data, 
+                                                            LabelFile(self.searh_label_path(item.image_file)))
+
+                return label
+        else:
+            return next(self.get_label_from_path())
+
+
+    def __len__(self):
+        return len(list(self.get_label_from_path()))
+
+
+class LabelsPolygon(LabelsFile):
+
+    def __init__(self, labels: Union[str, Callable, List, Label] = "labels", extension: str = ".json",
+                 output_shape: tuple = None, filter: Callable = None, map: Callable = None) -> None:
+        
+        super().__init__(labels, extension, output_shape, filter, map)
+
+        self.extension = extension
+
+
+    def get_label_from_path(self):
+        for path_file in self.get_path():
+            yield LabelPolygon(path_file)
+
+
+    def to_type(self, label):
+        if isinstance(label, LabelPolygon):
+            return label
+        else:
+            return LabelPolygon(label)
+        
+
+    def __iter__(self):
+        if isinstance(self.labels, str):
+            yield from super().__iter__()
+        else:
+            for label in self.labels:
+                label = self.process_label(label)
+                if label is None:
+                    continue
+
+                yield self.to_type(label)
+        
+
+    def get_label(self) -> LabelPolygon:
+        
+        if self.args is not None:
+            item = self.args
+            if isinstance(item, Image):
+                label: LabelPolygon = self.buffer.setdefault(item.path_data, 
+                                                    LabelPolygon(self.searh_label_path(item.image_file)))
+                if item.resize:
+                    label.resize(item.size, item.desired_size)
+            
+                if item.rotate:
+                    label.rotate(-90, item.desired_size[0]/2, item.desired_size[1]/2)
+
+            return label
+        else:
+            return next(self.get_label_from_path())

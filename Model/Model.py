@@ -1,17 +1,23 @@
 import tensorflow as tf
-from tensorflow.keras.layers import Conv2D, MaxPooling2D, Flatten, Dense, Dropout # type: ignore
+from tensorflow.keras.layers import Input, Conv2D, MaxPooling2D, Reshape # type: ignore
+from tensorflow.keras.layers import Flatten, Dense, Dropout, BatchNormalization, LeakyReLU # type: ignore
 from tensorflow.keras.models import Sequential # type: ignore
+from tensorflow.keras.optimizers import Adam
+from tensorflow.keras.losses import BinaryCrossentropy
+from tensorflow.keras.callbacks import ModelCheckpoint, EarlyStopping
+
+from math import ceil
+
 import numpy as np
 from Dataset import Dataset
 
 class Model:
 
-    def __init__(self, name_model: str = "Model.keras", classification: bool = False, save: bool = False):
+    def __init__(self, name_model: str = "Model.keras", save: bool = False):
         self.name_model = name_model
         self.save = save
 
         self.model = None
-        self.classification = classification
 
     def set_save(self, save: bool):
         self.save = save
@@ -40,7 +46,7 @@ class Model:
         ]
         return callbacks
     
-    def create_model(self, input_shape: tuple = (500, 500, 3), output_shape: int = 1):
+    def create_model(self, input_shape: tuple = (500, 500, 3)):
         self.model = Sequential([
             Conv2D(32, (3, 3), activation='relu', input_shape=input_shape),
             MaxPooling2D((2, 2)),
@@ -48,10 +54,7 @@ class Model:
             MaxPooling2D((2, 2)),
             Conv2D(128, (3, 3), activation='relu'),
             MaxPooling2D((2, 2)),
-            Flatten(),
-            Dense(128, activation='relu'),
-            Dropout(0.5),
-            Dense(output_shape, activation='softmax' if self.classification else 'linear')
+            Flatten()
         ])
 
         self.compile()
@@ -62,25 +65,7 @@ class Model:
         if self.model is None:
             raise Exception("Model is not loaded")
         
-        if self.classification:
-            self.model.compile(optimizer='adam',
-                loss='categorical_crossentropy',
-                metrics=['accuracy'])
-            return 
-        
         self.model.compile(optimizer='adam', loss='mse', metrics=['mae'])
-
-    def test_model(self, ds_test):
-        if self.model is None:
-            raise Exception("Model is not loaded")
-        
-        # оцениваем точность на тестовой выборке
-        test_loss, test_mae = self.model.evaluate(ds_test)
-        
-        print('[TEST INFO] Test loss:', test_loss)
-        print('[TEST INFO] Test mae:', test_mae)
-    
-        return test_loss, test_mae
 
     def train(self, ds, ds_test = None, epochs=200, batch_size=32):
 
@@ -89,14 +74,14 @@ class Model:
         if isinstance(ds, Dataset):
             steps_per_epoch = len(ds)
             if ds.split:
-                steps_per_epoch = int(len(ds) * (1 - ds.test_size))
-                validation_steps = int(len(ds) * ds.test_size) // batch_size
+                steps_per_epoch = len(ds) * (1 - ds.test_size)
+                validation_steps = ceil((len(ds) * ds.test_size) / batch_size) - 1
                 ds, ds_test = ds.get_ds()
 
             else:
                 ds = ds.get_ds()
             
-            steps_per_epoch //= batch_size
+            steps_per_epoch = ceil(steps_per_epoch / batch_size) - 1
 
         if self.model is None:
             input_shape = ds.element_spec[0].shape
@@ -105,14 +90,16 @@ class Model:
             self.model = self.create_model(input_shape, output_shape)
 
         ds = ds.batch(batch_size).prefetch(tf.data.AUTOTUNE)
+        print("[TRAIN INFO] Start training")
+        print(f"[TRAIN INFO] Steps per epoch: {steps_per_epoch}")
 
         if ds_test is not None:
+            print(f"[TRAIN INFO] Validation steps: {validation_steps}")
             callbacks = self.add_callbacks()
 
             ds_test = ds_test.batch(batch_size).prefetch(tf.data.AUTOTUNE)
 
             history = self.model.fit(ds, epochs=epochs, 
-                                    verbose=1, 
                                     callbacks=callbacks,
                                     validation_data=ds_test,
                                     validation_steps=validation_steps,  
@@ -125,3 +112,100 @@ class Model:
             self.save_model() 
 
         return history
+
+class ModelClassification(Model):
+
+    def __init__(self, name_model: str = "ModelClassification.keras", save: bool = False):
+        super().__init__(name_model, save)
+
+    def create_model(self, input_shape: tuple = (500, 500, 3), output_shape: int = 1):
+        super().create_model(input_shape, output_shape)
+
+        self.model.add(Dense(128, activation='relu'))
+        self.model.add(Dropout(0.5))
+        self.model.add(Dense(output_shape, activation='softmax'))
+
+        return self.model
+
+    def compile(self):
+        if self.model is None:
+            raise Exception("Model is not loaded")
+        
+        self.model.compile(optimizer='adam',
+            loss='categorical_crossentropy',
+            metrics=['accuracy'])
+
+class ModelPolygons(Model):
+
+    def __init__(self, name_model: str = "ModelPolygons.keras", save: bool = False):
+        super().__init__(name_model, save)
+
+    def create_model(self, input_shape=(500, 500, 3), num_anchors=9, num_classes=1):
+        inputs = Input(shape=input_shape)
+
+        # Слой свертки 1
+        x = Conv2D(32, (3, 3), strides=(1, 1), padding='same')(inputs)
+        x = BatchNormalization()(x)
+        x = LeakyReLU(alpha=0.1)(x)
+
+        # Слой свертки 2
+        x = Conv2D(64, (3, 3), strides=(2, 2), padding='same')(x)
+        x = BatchNormalization()(x)
+        x = LeakyReLU(alpha=0.1)(x)
+
+        # Слой свертки 3
+        x = Conv2D(128, (3, 3), strides=(2, 2), padding='same')(x)
+        x = BatchNormalization()(x)
+        x = LeakyReLU(alpha=0.1)(x)
+
+        # Слой свертки 4
+        x = Conv2D(256, (3, 3), strides=(2, 2), padding='same')(x)
+        x = BatchNormalization()(x)
+        x = LeakyReLU(alpha=0.1)(x)
+
+        # Выходной слой
+        # num_anchors * (num_classes + 5) включает координаты (x, y, w, h), объектность и классы
+        num_outputs = num_anchors * (num_classes + 5)
+        x = Conv2D(num_outputs, (1, 1), strides=(1, 1), padding='same')(x)
+
+        # Преобразование выходов
+        output_shape = (-1, (input_shape[0] // 8) * (input_shape[1] // 8) * num_anchors, num_classes + 5)
+        outputs = Reshape(output_shape)(x)
+
+        self.model = Model(inputs, outputs)
+        return self.model
+
+    def compile(self):
+        if self.model is None:
+            raise Exception("Model is not loaded")
+        
+        optimizer = Adam(learning_rate=1e-4)
+    
+        # Функция потерь — простая для классификации и детекции
+        # Можно сделать кастомную функцию потерь для YOLO (включающую ошибки координат)
+        loss = BinaryCrossentropy(from_logits=True)  # Используем BinaryCrossentropy для объектности
+
+        # Компиляция
+        self.model.compile(optimizer=optimizer, loss=loss)
+
+        return self.model
+    
+    def add_callbacks(self):
+        # Коллбэк для сохранения лучших весов
+        checkpoint = ModelCheckpoint(
+            f'BestModel{self.name_model}',      # Имя файла для сохранения
+            monitor='val_loss',   # Мониторим потерю на валидационных данных
+            save_best_only=True,  # Сохраняем только лучшие веса
+            mode='min',           # Сохраняем веса при минимальном значении val_loss
+            verbose=1
+        )
+        
+        # Коллбэк для ранней остановки
+        early_stopping = EarlyStopping(
+            monitor='val_loss',   # Мониторим потерю на валидационных данных
+            patience=10,          # Количество эпох для ожидания улучшений
+            mode='min',           # Останавливаем при минимальном значении val_loss
+            verbose=1
+        )
+        
+        return [checkpoint, early_stopping]
