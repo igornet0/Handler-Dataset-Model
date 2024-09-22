@@ -94,9 +94,13 @@ class LabelPolygon(Label):
         return [round(x) for x in label]
 
 
-    def resize(self, shape, shape_new):
+    def resize(self, label, shape, shape_new):
         new_points = []
-        points = np.array(self.label)
+        if isinstance(label[0], list):
+            labels = np.array(label)
+            return labels.map(lambda x: self.resize(x, shape, shape_new))
+
+        points = np.array(label)
         points = points.reshape((-1, 2))
 
         for point in points:
@@ -105,11 +109,12 @@ class LabelPolygon(Label):
             new_points.extend([new_x, new_y])
 
         self.label = new_points
-        return self.label
+        return new_points
 
 
     def back(self, width, height):
         new_points = []
+        
         points = np.array(self.label)
         points = points.reshape((-1, 2))
 
@@ -122,9 +127,12 @@ class LabelPolygon(Label):
         return self.label
 
 
-    def rotate(self, angle_degrees, center_x, center_y):
-
-        points = np.array(self.label)
+    def rotate(self, label, angle_degrees, center_x, center_y):
+        if isinstance(label[0], list):
+            labels = np.array(label)
+            return labels.map(lambda x: self.rotate(x, angle_degrees, center_x, center_y))
+        
+        points = np.array(label)
         points = points.reshape((-1, 2))
 
         angle_radians = math.radians(angle_degrees)
@@ -150,8 +158,7 @@ class LabelPolygon(Label):
             rotated_points.extend([new_x, new_y])
         
         self.label = rotated_points
-        return self.label
-    
+        return rotated_points    
     
 class Labels:
 
@@ -351,10 +358,10 @@ class LabelsPolygon(LabelsFile):
                 label: LabelPolygon = self.buffer.setdefault(item.path_data, 
                                                     LabelPolygon(self.searh_label_path(item.image_file)))
                 if item.resize:
-                    label.resize(item.size, item.desired_size)
+                    label.resize(label.get(), item.size, item.desired_size)
             
                 if item.rotate:
-                    label.rotate(-90, item.desired_size[0]/2, item.desired_size[1]/2)
+                    label.rotate(label.get(), i-90, item.desired_size[0]/2, item.desired_size[1]/2)
 
             return label
         else:

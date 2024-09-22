@@ -18,7 +18,7 @@ def choise_doit(data: Image, pred_path: str, cash_path: None):
         case 4:
             os.remove(data.path_data)
 
-def handler_dataset_label_image(dataset: DatasetImage, model: Model, dop_map = lambda x: x):
+def handler_dataset_image(dataset: DatasetImage, model: Model, dop_map = lambda x: x):
 
     for _, data in zip(range(len(dataset)), dataset):
         map = lambda x: x.index(max(x))
@@ -34,13 +34,7 @@ def handler_dataset_label_image(dataset: DatasetImage, model: Model, dop_map = l
                 dop_map(data, pred[0], map(label))
         else:
             dataset.show_img(data.get_image(), pred[0])
-
-def handler_dataset_image(dataset: DatasetImage, model: Model, dop_map = lambda x: x):
-    for _, data in zip(range(len(dataset)), dataset):
-        map = lambda x: x.index(max(x))
-        image_p = data.get_data()
-        pred = model.predict(image_p, map)
-        dop_map(data, pred[0])
+            dop_map(data, pred[0], map(label))
 
 
 def main(path_dataset_test):
