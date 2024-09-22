@@ -29,7 +29,6 @@ class Dataset:
         self.shuffle = shuffle
         self.split = split
         self.test_size = test_size
-        self.test_path = "dataset_test"
 
 
     def generator_data(self) -> iter:
