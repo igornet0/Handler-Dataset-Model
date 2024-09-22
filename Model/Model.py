@@ -2,9 +2,9 @@ import tensorflow as tf
 from tensorflow.keras.layers import Input, Conv2D, MaxPooling2D, Reshape # type: ignore
 from tensorflow.keras.layers import Flatten, Dense, Dropout, BatchNormalization, LeakyReLU # type: ignore
 from tensorflow.keras.models import Sequential # type: ignore
-from tensorflow.keras.optimizers import Adam
-from tensorflow.keras.losses import BinaryCrossentropy
-from tensorflow.keras.callbacks import ModelCheckpoint, EarlyStopping
+from tensorflow.keras.optimizers import Adam # type: ignore
+from tensorflow.keras.losses import BinaryCrossentropy # type: ignore
+from tensorflow.keras.callbacks import ModelCheckpoint, EarlyStopping # type: ignore
 
 from math import ceil
 

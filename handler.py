@@ -73,4 +73,4 @@ def main(path_dataset_test):
     handler_dataset_image(dataset_train, model, pred_label)
 
 if __name__ == "__main__":
-    main(args[1])
+    main(argv[1])
