@@ -4,7 +4,6 @@ from os.path import join, isdir, exists
 from types import FunctionType as function
 import matplotlib.pyplot as plt
 import tensorflow as tf
-from sklearn.model_selection import train_test_split
 
 from .Label import *
 from .Data import *
@@ -12,7 +11,7 @@ from .Data import *
 class Dataset:
 
     def __init__(self, data: (str | list), labels = None, output_shape: int = None, shuffle: bool = False, 
-                 split: bool = True, test_size: float = 0.2):
+                 split: bool = False, test_size: float = 0.2):
 
         if not isinstance(labels, Labels):
             path = False
@@ -39,8 +38,10 @@ class Dataset:
             for data in self:
                 yield data
 
+
     def get_label(self, data: Data) -> Label:
         return self.labels[data].get_label()
+
 
     def get_data_label(self):
 
@@ -60,12 +61,13 @@ class Dataset:
                     tf.TensorSpec(shape=self.labels.shape),
                 ),
             )
-        
         return ds
     
+
     def __iter__(self):
         yield from self.data.get_data()
     
+
     def get_ds(self):
         if self.split:
             ds = self.create_data()
@@ -77,9 +79,11 @@ class Dataset:
         
         return self.create_data()
 
+
     def __len__(self):
         return len(self.data)
     
+
     @property
     def shape(self):
         return self.data.shape
@@ -106,11 +110,22 @@ class DatasetImage(Dataset):
 
         return filter(lambda x: x.endswith(self.extension), files) if files_only else files
     
+
     def gen_image(self, path_file: str):
         for file in self.get_files(path_file):
             yield join(path_file, file)
     
-    def get_path_images(self):
+
+    def gen_buffer(self, buffer_gen: dict):
+        for _, gen in buffer_gen.items():
+            while True:
+                try:
+                    yield next(gen)
+                except StopIteration:
+                    break
+
+
+    def get_path_images(self, getbuffer: bool = False):
         files = self.get_files(self.data_path, False)
         buffer_gen = {}
         for image_file in files:
@@ -120,15 +135,11 @@ class DatasetImage(Dataset):
             else:
                 yield path_data
 
-        if buffer_gen:
-            buffer_size = 5
-            while True:
-                for path_file, gen in buffer_gen.items():
-                    for _ in range(buffer_size):
-                        try:
-                            yield next(gen)
-                        except StopIteration:
-                            buffer_gen[path_data] = self.gen_image(path_file)
+        if buffer_gen and not getbuffer:
+            yield from self.gen_buffer(buffer_gen)
+        else:
+            return buffer_gen
+
 
     def get_data_from_path(self):
         for path_file in self.get_path_images():
@@ -138,6 +149,7 @@ class DatasetImage(Dataset):
                 continue
             
             yield Image(image, path_file, self.desired_size, self.rot)
+
 
     def gen_rotate(self, data: Image):
         for _ in range(4):
@@ -149,6 +161,7 @@ class DatasetImage(Dataset):
             yield image, label
         
         self.labels.clear_buffer()
+
 
     def get_data_label(self):
         for data in self:
@@ -165,6 +178,7 @@ class DatasetImage(Dataset):
                 continue
 
             yield image, label
+
 
     def __iter__(self):
         yield from self.get_data_from_path()
@@ -183,7 +197,7 @@ class DatasetImage(Dataset):
                 if not file.endswith(self.extension):
                     continue
                 files_col += 1
-
+        
         return files_col
 
 
