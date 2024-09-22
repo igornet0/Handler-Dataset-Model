@@ -39,8 +39,3 @@ def test_model_classification(model: (Model | str), path_dataset_test="test"):
 
         if i % (batch_size // 10) == 0:
             print(f"{i}/{batch_size}")
-
-labels = LabelsPolygon(labels="dataset_new", filter=lambda x: x if len(x) > 1 else None)
-
-for label in labels:
-    print(label.get())
