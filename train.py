@@ -11,7 +11,7 @@ def train_model_detection(path_dataset_train, path_model=None, save_checkpoints=
 
     dataset_train = DatasetImage(path_dataset_train, 
                                  labels="train/labels", output_shape=8,
-                                 shuffle=True, rotate=True)
+                                 split=True, rotate=True)
 
     ds, ds_test = dataset_train.get_ds()
 
@@ -23,19 +23,27 @@ def train_model_detection(path_dataset_train, path_model=None, save_checkpoints=
 
     return model
 
-def train_model_plygon(path_dataset_train, path_model=None, save_checkpoints=True, batch_size=32, epochs=10) -> Model:
+def train_model_polygon(path_dataset_train, path_model=None, save_checkpoints=True, batch_size=32, epochs=10) -> Model:
+
+    labels = LabelsPolygon(path_dataset_train)
 
     dataset_train = DatasetImage(path_dataset_train, 
-                                 labels="train/labels", output_shape=8,
-                                 shuffle=True, rotate=True)
+                                 labels=labels,
+                                 split=True, rotate=True)
 
     ds, ds_test = dataset_train.get_ds()
+    for _, data in zip(range(5), ds):
+        print(data)
 
-    model = ModelClassification(save=save_checkpoints, name_model="ModelPolygon.keras")
-    if path_model is not None:
-        model.load_model(path_model)
+    if isinstance(path_model, Model):
+        model = path_model
+        model.set_save(save_checkpoints)
+    else:
+        model = ModelPolygons(save=save_checkpoints, name_model="ModelPolygon.keras")
+        if path_model is not None:
+            model.load_model(path_model)
 
-    model.train(ds, ds_test, batch_size=batch_size, epochs=epochs)
+    model.train(dataset_train, batch_size=batch_size, epochs=epochs)
 
     return model
 
@@ -54,7 +62,7 @@ def train_model_classification(path_dataset_train, path_model=None,
                     output_shape=len(label))
     
     dataset_train = DatasetImage(path_dataset_train, labels=labels, desired_size=(250, 250, 3),
-                                 shuffle=True, rotate=False, split=True)
+                                 rotate=False, split=True)
 
     model = ModelClassification(save=save_checkpoints, name_model="ModelClassification250.keras")
     if path_model is not None:

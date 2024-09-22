@@ -17,7 +17,7 @@ def test_model_classification(model: (Model | str), path_dataset_test="test"):
         model_new.load_model(model)
         model = model_new
 
-    dataset_train = DatasetImage(path_dataset_test, labels=labels, shuffle=True, desired_size=(250, 250, 3))
+    dataset_train = DatasetImage(path_dataset_test, labels=labels, desired_size=(250, 250, 3))
     labels = get_classes(path_dataset_test, one_hot=False)
 
     batch_size = len(dataset_train)

@@ -10,7 +10,7 @@ from .Data import *
 
 class Dataset:
 
-    def __init__(self, data: (str | list), labels = None, output_shape: int = None, shuffle: bool = False, 
+    def __init__(self, data: (str | list), labels = None, output_shape: int = None, 
                  split: bool = False, test_size: float = 0.2):
 
         if not isinstance(labels, Labels):
@@ -26,7 +26,6 @@ class Dataset:
         self.data = Data(data)
         self.labels = labels
 
-        self.shuffle = shuffle
         self.split = split
         self.test_size = test_size
 
@@ -94,9 +93,9 @@ class DatasetImage(Dataset):
     def __init__(self, data_path: str, labels: (str | function | list | Label) = "labels/", 
                  extension: str = ".png", 
                  desired_size = (500, 500, 3), rotate: bool = False,
-                 shuffle: bool = False, split: bool = True, test_size: float = 0.2):
+                 split: bool = True, test_size: float = 0.2):
         
-        super().__init__(data=None, labels=labels, output_shape=desired_size, shuffle=shuffle, split=split, test_size=test_size)
+        super().__init__(data=None, labels=labels, output_shape=desired_size, split=split, test_size=test_size)
 
         self.data_path = data_path
 
