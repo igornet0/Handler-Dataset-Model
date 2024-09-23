@@ -361,7 +361,7 @@ class LabelsPolygon(LabelsFile):
                     label.resize(label.get(), item.size, item.desired_size)
             
                 if item.rotate:
-                    label.rotate(label.get(), i-90, item.desired_size[0]/2, item.desired_size[1]/2)
+                    label.rotate(label.get(), -90, item.desired_size[0]/2, item.desired_size[1]/2)
 
             return label
         else:
