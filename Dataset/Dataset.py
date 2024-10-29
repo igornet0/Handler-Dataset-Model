@@ -1,7 +1,6 @@
 import cv2
-from os import listdir
+from os import listdir, walk
 from os.path import join, isdir, exists
-from types import FunctionType as function
 from typing import Union, Iterable
 
 import matplotlib.pyplot as plt

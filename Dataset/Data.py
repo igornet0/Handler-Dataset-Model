@@ -6,11 +6,14 @@ from typing import Union, Generator
 
 class Data:
 
-    def __init__(self, data: Union[str, Generator]):
+    def __init__(self, data: Union[str, Generator], args: tuple = None):
         self.data = data
+        self.args = args
+
 
     def loop_generator(self, generator: Generator) -> list:
-        return [i for i in generator]
+        return [i for i in generator(*self.args if self.args else [])]
+
 
     def get(self) -> np.ndarray:
         if isinstance(self.data, Generator):
@@ -22,10 +25,12 @@ class Data:
         if not isinstance(self.data, np.ndarray):
             return np.array([self.data])
         
+
     @property
     def shape(self) -> tuple:
         return self.get().shape
     
+
     def __len__(self):
         return len(self.get())
     
@@ -56,16 +61,15 @@ class Image(Data):
         elif len(desired_size) != len(data.shape):
             raise Exception(f"Desired shape {desired_size} does not match data shape {data.shape}")
 
-        self.image_original = Data(data.copy())
-
-        self.path_data = path_data
         if not path_data is None:
+            self.path_data = path_data
             self.image_file = path_data.split(os.path.sep)[-1]
             self.extension = f".{self.path_data.split('.')[-1]}"
         else:
-            self.image_file = ""
-            self.extension = ""
-
+            self.image_file = "image.png"
+            self.extension = ".png"
+            self.path_data = self.image_file
+            
         self.desired_size = desired_size
         self.rotate_flag = rotate
         
@@ -74,7 +78,7 @@ class Image(Data):
 
 
     def get_image(self) -> np.ndarray:
-        return self.image_original.data
+        return self.data
 
 
     def resize(self, image: np.ndarray) -> np.ndarray:
@@ -90,7 +94,7 @@ class Image(Data):
         return cv2.rotate(image, cv2.ROTATE_90_COUNTERCLOCKWISE)
     
     
-    def get(self):
+    def get(self) -> np.ndarray:
         if self.data.shape != self.desired_size:
             image = self.resize(self.data)
             self.resize_flag = True
@@ -100,7 +104,6 @@ class Image(Data):
 
         if self.rotate_flag:
             image = self.rotate(image)
-            self.data = image
         
         return self.normalize(image)
     
@@ -108,11 +111,35 @@ class Image(Data):
     def shape(self):
         return self.desired_size
     
+
     def flatten(self):
         return self.data.flat()
+
 
     def __len__(self):
         if isinstance(self.data, np.ndarray):
             return len(self.data.flatten())
         
         return len(self.data)
+    
+
+class File(Data):
+
+    def __init__(self, data:str):
+        
+        if os.path.exists(data):
+            data = os.path.abspath(data)
+        else:
+            raise ValueError(f"Path {data} does not exist")
+
+        super().__init__(data)
+        
+
+    def get_file_data(self, path: str) -> Generator:
+        with open(path) as file:
+            for line in file.read().splitlines():
+                yield line
+
+
+    def get(self) -> list:
+        return list(self.get_file_data(self.data))

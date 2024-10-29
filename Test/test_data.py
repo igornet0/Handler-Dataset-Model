@@ -4,7 +4,7 @@ import sys
 
 sys.path.append('../')
 
-from Dataset import Data, Image
+from Dataset import Data, Image, File
 
 sys.path.clear()
 
@@ -26,10 +26,10 @@ class TestData_list_Generator:
         for i in data:
             yield i
 
-    data = Data(generator([1, 2, 3]))
+    data = Data(generator, [1, 2, 3])
 
     def test_get_data(self):
-        assert list(self.data.get()) == [1, 2, 3]
+        assert self.data.get().tolist() == [1, 2, 3]
     
     def test_shape(self):
         assert self.data.shape == (3, )
@@ -39,7 +39,7 @@ class TestData_str:
     data = Data("Hello world")
 
     def test_get_data(self):
-        assert list(self.data.get()) == ["Hello world"]
+        assert self.data.get().tolist() == ["Hello world"]
     
     def test_shape(self):
         assert self.data.shape == (1, )
@@ -49,14 +49,14 @@ class TestData_List_str:
     data = Data(["Hello world", "My name is John"])
 
     def test_get_data(self):
-        assert list(self.data.get()) == ["Hello world", "My name is John"]
+        assert self.data.get().tolist() == ["Hello world", "My name is John"]
     
     def test_shape(self):
         assert self.data.shape == (2, )
 
 class TestImage_str:
 
-    image_file = "test.jpg"
+    image_file = "Data/test.jpg"
     data = Image(image_file, desired_size=(50, 50, 3))
     image = data.get_image()
 
@@ -73,11 +73,9 @@ class TestImage_str:
         assert self.data.shape == (50, 50, 3)
 
 class TestImage_list:
-
-    image_file = "test.jpg"
-    data = Image(image_file)
+    image_file = "Data/test.jpg"
+    data = Image(image_file, desired_size=(50, 50, 3))
     image = data.get_image()
-
     data = Image(image)
 
     def test_get_data(self):
@@ -94,3 +92,14 @@ class TestImage_list:
 
     def test_len(self):
         assert len(self.data) == 256 * 256 * 3
+
+
+class TestFile_str:
+
+    data = File("Data/test.jpg")
+
+    def test_get_data(self):
+        assert self.data.get().tolist() == ['Hello world my name is {user.get_name()}, welcome !']
+    
+    def test_get_path(self):
+        assert str(self.data) == "Data/test.jpg"
