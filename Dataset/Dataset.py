@@ -2,26 +2,30 @@ import cv2
 from os import listdir
 from os.path import join, isdir, exists
 from types import FunctionType as function
+from typing import Union, Iterable
+
 import matplotlib.pyplot as plt
 import tensorflow as tf
 
 from .Label import *
+from .Labels import *
 from .Data import *
 
 class Dataset:
 
-    def __init__(self, data: (str | list), labels = None, output_shape: int = None, 
+    def __init__(self, data: Union[str, Iterable], labels: Labels = None, output_shape: int = None, 
                  split: bool = False, test_size: float = 0.2):
 
+        """
+        :param data: Path to the folder containing the data or a list of data
+        :param labels: Path to the folder containing the labels or a list of labels
+        :param output_shape: Shape of the output data
+        :param split: Boolean indicating whether to split the data into train and test sets
+        :param test_size: float indicating the proportion of the data to be used for testing
+        """
+        
         if not isinstance(labels, Labels):
-            path = False
-            if "/" in labels:
-                if not exists(labels):
-                    raise Exception(f"Labels path not found: {labels}")
-                
-                path = True
-
-            labels = Labels(labels, path=path, output_shape=output_shape)
+            labels = Labels(labels, output_shape=output_shape)
 
         self.data = Data(data)
         self.labels = labels
@@ -29,9 +33,14 @@ class Dataset:
         self.split = split
         self.test_size = test_size
 
+    
+    def set_split(self, split: bool, test_size: float = 0.2):
+        self.split = split
+        self.test_size = test_size
+
 
     def generator_data(self) -> iter:
-        if self.labels:
+        if self.labels.get_labels() is not None:
             yield from self.get_data_label()
         else:
             for data in self:
@@ -43,6 +52,8 @@ class Dataset:
 
 
     def get_data_label(self):
+        if self.labels.get_labels() is None:
+            raise ValueError("Labels not found")
 
         for data, label in zip(self, self.labels):
             label = label.get()
@@ -90,9 +101,9 @@ class Dataset:
 
 class DatasetImage(Dataset):
 
-    def __init__(self, data_path: str, labels: (str | function | list | Label) = "labels/", 
+    def __init__(self, data_path: str, labels: Labels = None, 
                  extension: str = ".png", 
-                 desired_size = (500, 500, 3), rotate: bool = False,
+                 desired_size: tuple = None, rotate: bool = False,
                  split: bool = True, test_size: float = 0.2):
         
         super().__init__(data=None, labels=labels, output_shape=desired_size, split=split, test_size=test_size)
@@ -106,13 +117,12 @@ class DatasetImage(Dataset):
     
     def get_files(self, path: str, files_only: bool = True):
         files = listdir(path)
-
         return filter(lambda x: x.endswith(self.extension), files) if files_only else files
     
 
-    def gen_image(self, path_file: str):
-        for file in self.get_files(path_file):
-            yield join(path_file, file)
+    def gen_image(self, path_files: str):
+        for file in self.get_files(path_files):
+            yield join(path_files, file)
     
 
     def gen_buffer(self, buffer_gen: dict):

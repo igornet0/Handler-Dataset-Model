@@ -5,7 +5,6 @@ from main import get_classes
 from test import *
 
 import os
-import shutil
 
 def train_model_detection(path_dataset_train, path_model=None, save_checkpoints=True, batch_size=32, epochs=10) -> Model:
 
