@@ -1,211 +1,241 @@
-import tensorflow as tf
-from tensorflow.keras.layers import Input, Conv2D, MaxPooling2D, Reshape # type: ignore
-from tensorflow.keras.layers import Flatten, Dense, Dropout, BatchNormalization, LeakyReLU # type: ignore
-from tensorflow.keras.models import Sequential # type: ignore
-from tensorflow.keras.optimizers import Adam # type: ignore
-from tensorflow.keras.losses import BinaryCrossentropy # type: ignore
-from tensorflow.keras.callbacks import ModelCheckpoint, EarlyStopping # type: ignore
+import torch
+import torch.nn as nn
+import torch.optim as optim
+from torch.optim.lr_scheduler import ReduceLROnPlateau
+from torchvision import transforms
+from PIL import Image
+import os
 
 from math import ceil
 
 import numpy as np
 from Dataset import Dataset
+from Log import Loger
 
-class Model:
-
-    def __init__(self, name_model: str = "Model.keras", save: bool = False):
-        self.name_model = name_model
-        self.save = save
+class Model(nn.Module):
+    def __init__(self, name_model="Model", save=False, log: Loger = None, DEBUG=False):
+        super(Model, self).__init__()
 
         self.model = None
-
-    def set_save(self, save: bool):
-        self.save = save
-
-    def predict(self, data: np.ndarray, map_f = None):
-        if self.model is None:
-            raise Exception("Model is not loaded")
-
-        predict = self.model.predict(np.array([data]), verbose=0)  
-        if not map_f is None:
-            return np.array([map_f(x.tolist()) for x in predict])
-        return np.array(predict)
-
-    def load_model(self, path: str = "Model.keras"):
-        self.name_model = path
-        self.model = tf.keras.models.load_model(path)
-    
-    def save_model(self):
-        print(f"[TRAIN INFO] Model safe in file: {self.name_model}")
-        self.model.save(self.name_model)
-
-    def add_callbacks(self):
-        callbacks = [
-            tf.keras.callbacks.EarlyStopping(patience=5, restore_best_weights=True),
-            tf.keras.callbacks.ReduceLROnPlateau(patience=3)
-        ]
-        return callbacks
-    
-    def create_model(self, input_shape: tuple = (500, 500, 3)):
-        self.model = Sequential([
-            Conv2D(32, (3, 3), activation='relu', input_shape=input_shape),
-            MaxPooling2D((2, 2)),
-            Conv2D(64, (3, 3), activation='relu'),
-            MaxPooling2D((2, 2)),
-            Conv2D(128, (3, 3), activation='relu'),
-            MaxPooling2D((2, 2)),
-            Flatten()
-        ])
-
-        self.compile()
-
-        return self.model
-
-    def compile(self):
-        if self.model is None:
-            raise Exception("Model is not loaded")
+        self.optimizer = None
         
-        self.model.compile(optimizer='adam', loss='mse', metrics=['mae'])
+        self.name_model = f"{name_model}.pth" if not name_model.endswith(".pth") else name_model
+        self._save = save
+        self.epoch = 0
+        self.loss = 0
+        self.best_loss = float('inf')
 
-    def train(self, ds, ds_test = None, epochs=200, batch_size=32):
-
-        steps_per_epoch = 10
-
-        if isinstance(ds, Dataset):
-            steps_per_epoch = len(ds)
-            if ds.split:
-                steps_per_epoch = len(ds) * (1 - ds.test_size)
-                validation_steps = ceil((len(ds) * ds.test_size) / batch_size) - 1
-                ds, ds_test = ds.get_ds()
-
-            else:
-                ds = ds.get_ds()
-            
-            steps_per_epoch = ceil(steps_per_epoch / batch_size) - 1
-
-        if self.model is None:
-            input_shape = ds.element_spec[0].shape
-            output_shape = ds.element_spec[1].shape[0]
-            print(f"Input shape: {input_shape}, output shape: {output_shape}")
-            self.model = self.create_model(input_shape, output_shape)
-
-        ds = ds.batch(batch_size).prefetch(tf.data.AUTOTUNE)
-        print("[TRAIN INFO] Start training")
-        print(f"[TRAIN INFO] Steps per epoch: {steps_per_epoch}")
-
-        if ds_test is not None:
-            print(f"[TRAIN INFO] Validation steps: {validation_steps}")
-            callbacks = self.add_callbacks()
-
-            ds_test = ds_test.batch(batch_size).prefetch(tf.data.AUTOTUNE)
-
-            history = self.model.fit(ds, epochs=epochs, 
-                                    callbacks=callbacks,
-                                    validation_data=ds_test,
-                                    validation_steps=validation_steps,  
-                                    steps_per_epoch=steps_per_epoch)
+        self.DEBUG = DEBUG
+        if self.DEBUG:
+            self.log = Loger()
         else:
-            history = self.model.fit(ds, epochs=epochs,  
-                                    steps_per_epoch=steps_per_epoch, 
-                                    verbose=1)
-        if self.save:
-            self.save_model() 
+            if log is None:
+                log = Loger().off
 
-        return history
+            self.log = log
+        
+    def set_save(self, save=False):
+        self._save = save
+        self.log["INFO"](f"Save model: {self.save}")
+    
+    def save(self, checkpoint_path, message=""):
+        if not self._save:
+            return
+        
+        if self.model is None or self.optimizer is None:
+            self.log["ERROR"]("Model or optimizer is not initialized")
+            raise Exception("Model is not initialized") if self.model is None else Exception("Optimizer is not initialized")
+        
+        if not os.path.exists(checkpoint_path):
+            os.makedirs(checkpoint_path)
+
+        
+        # Save model state, optimizer state, and epoch information
+        torch.save({
+            'epoch': self.epoch + 1,
+            'model_state_dict': self.model.state_dict(),
+            'optimizer_state_dict': self.optimizer.state_dict(),
+            'loss': self.loss
+        }, checkpoint_path)
+
+        if message:
+            self.log["INFO"](message)
+        else:
+            self.log["INFO"](f"Saved with loss {self.loss:.4f} at epoch {self.epoch+1} and checkpoint path: {checkpoint_path}")
+        
+    def save_best(self, best_loss, checkpoint_dir="checkpoints"):
+        checkpoint_path = os.path.join(checkpoint_dir, f"best_{self.epoch + 1}_{self.name_model}")
+        
+        return self.save(checkpoint_path, 
+                         message=f"Saved with best loss {best_loss:.4f} at epoch {self.epoch+1} and checkpoint path: {checkpoint_path}")
+
+    def save_last(self, checkpoint_dir="checkpoints"):
+        checkpoint_path = os.path.join(checkpoint_dir, f"last_{self.epoch + 1}_{self.name_model}")
+        
+        return self.save(checkpoint_path, 
+                         message=f"Saved with loss {self.loss:.4f} at epoch {self.epoch+1} and checkpoint path: {checkpoint_path}")
+
+    def load(self, checkpoint_path):
+        """
+        Loads the model and optimizer state from a checkpoint file.
+        
+        :param model: The model instance to load the weights into.
+        :param optimizer: The optimizer instance to load the state into.
+        :param checkpoint_path: Path to the checkpoint file.
+        
+        :return: epoch (int) - The epoch at which the checkpoint was saved.
+                best_loss (float) - The best validation loss at checkpoint saving time.
+        """
+        if not os.path.exists(checkpoint_path):
+            self.log["ERROR"]("Checkpoint path does not exist")
+            raise Exception("Checkpoint path does not exist")
+        
+        checkpoint = torch.load(checkpoint_path)
+        self.model.load_state_dict(checkpoint['model_state_dict'])
+        self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+        epoch = checkpoint['epoch']
+        loss = checkpoint['loss']
+        
+        self.log["INFO"](f"Checkpoint loaded from {checkpoint_path} at epoch {epoch} with best validation loss {loss:.4f}")
+
+        return self
+
 
 class ModelClassification(Model):
+    def __init__(self, num_classes=1, name_model="ModelClassification", save=False, log: Loger = None, DEBUG=False):
+        super(ModelClassification, self).__init__(name_model=name_model, save=save, log=log, DEBUG=DEBUG)
 
-    def __init__(self, name_model: str = "ModelClassification.keras", save: bool = False):
-        super().__init__(name_model, save)
-
-    def create_model(self, input_shape: tuple = (500, 500, 3), output_shape: int = 1):
-        super().create_model(input_shape, output_shape)
-
-        self.model.add(Dense(128, activation='relu'))
-        self.model.add(Dropout(0.5))
-        self.model.add(Dense(output_shape, activation='softmax'))
-
-        return self.model
-
-    def compile(self):
-        if self.model is None:
-            raise Exception("Model is not loaded")
-        
-        self.model.compile(optimizer='adam',
-            loss='categorical_crossentropy',
-            metrics=['accuracy'])
-
-class ModelPolygons(Model):
-
-    def __init__(self, name_model: str = "ModelPolygons.keras", save: bool = False):
-        super().__init__(name_model, save)
-
-    def create_model(self, input_shape=(500, 500, 3), num_anchors=9, num_classes=1):
-        inputs = Input(shape=input_shape)
-
-        # Слой свертки 1
-        x = Conv2D(32, (3, 3), strides=(1, 1), padding='same')(inputs)
-        x = BatchNormalization()(x)
-        x = LeakyReLU(alpha=0.1)(x)
-
-        # Слой свертки 2
-        x = Conv2D(64, (3, 3), strides=(2, 2), padding='same')(x)
-        x = BatchNormalization()(x)
-        x = LeakyReLU(alpha=0.1)(x)
-
-        # Слой свертки 3
-        x = Conv2D(128, (3, 3), strides=(2, 2), padding='same')(x)
-        x = BatchNormalization()(x)
-        x = LeakyReLU(alpha=0.1)(x)
-
-        # Слой свертки 4
-        x = Conv2D(256, (3, 3), strides=(2, 2), padding='same')(x)
-        x = BatchNormalization()(x)
-        x = LeakyReLU(alpha=0.1)(x)
-
-        # Выходной слой
-        # num_anchors * (num_classes + 5) включает координаты (x, y, w, h), объектность и классы
-        num_outputs = num_anchors * (num_classes + 5)
-        x = Conv2D(num_outputs, (1, 1), strides=(1, 1), padding='same')(x)
-
-        # Преобразование выходов
-        output_shape = (-1, (input_shape[0] // 8) * (input_shape[1] // 8) * num_anchors, num_classes + 5)
-        outputs = Reshape(output_shape)(x)
-
-        self.model = Model(inputs, outputs)
-        return self.model
-
-    def compile(self):
-        if self.model is None:
-            raise Exception("Model is not loaded")
-        
-        optimizer = Adam(learning_rate=1e-4)
-    
-        # Функция потерь — простая для классификации и детекции
-        # Можно сделать кастомную функцию потерь для YOLO (включающую ошибки координат)
-        loss = BinaryCrossentropy(from_logits=True)  # Используем BinaryCrossentropy для объектности
-
-        # Компиляция
-        self.model.compile(optimizer=optimizer, loss=loss)
-
-        return self.model
-    
-    def add_callbacks(self):
-        # Коллбэк для сохранения лучших весов
-        checkpoint = ModelCheckpoint(
-            f'BestModel{self.name_model}',      # Имя файла для сохранения
-            monitor='val_loss',   # Мониторим потерю на валидационных данных
-            save_best_only=True,  # Сохраняем только лучшие веса
-            mode='min',           # Сохраняем веса при минимальном значении val_loss
-            verbose=1
+        self.num_classes = num_classes
+        self.model = nn.Sequential(
+            nn.Conv2d(3, 32, kernel_size=3, padding=1),
+            nn.ReLU(),
+            nn.MaxPool2d(2, 2),
+            nn.Conv2d(32, 64, kernel_size=3, padding=1),
+            nn.ReLU(),
+            nn.MaxPool2d(2, 2),
+            nn.Flatten(),
+            nn.Linear(64 * 8 * 8, 128),
+            nn.ReLU(),
+            nn.Linear(128, num_classes)
         )
+
+        self.optimizer = optim.Adam(self.model.parameters())
+
+    def forward(self, x):
+        return self.model(x)
+    
+    def train(self, dataset: Dataset, batch_size=32, epochs=10):
+        if self.model is None:
+            self.log["ERROR"]("Model is not initialized")
+            raise Exception("Model is not initialized")
         
-        # Коллбэк для ранней остановки
-        early_stopping = EarlyStopping(
-            monitor='val_loss',   # Мониторим потерю на валидационных данных
-            patience=10,          # Количество эпох для ожидания улучшений
-            mode='min',           # Останавливаем при минимальном значении val_loss
-            verbose=1
-        )
+        train_loader = dataset.get_dataloader(batch_size=batch_size, shuffle=True)
+        criterion = nn.CrossEntropyLoss()
+        scheduler = ReduceLROnPlateau(self.optimizer, mode='min', factor=0.5, patience=2, verbose=True)  # Scheduler
+        running_loss = 0.0
+
+        for _ in range(epochs):
+            self.model.train()
+            for images, labels in train_loader:
+                outputs = self.model(images)
+                loss = criterion(outputs, labels)
+                
+                self.optimizer.zero_grad()
+                loss.backward()
+                self.optimizer.step()
+
+                running_loss += loss.item()
+            
+            self.log["INFO"](f"Epoch {self.epoch+1}/{epochs}, Loss: {running_loss/len(train_loader)}")
+
+            self.epoch += 1
+
+            if running_loss < self.best_loss:
+                self.save_best(running_loss)
+                self.best_loss = running_loss
         
-        return [checkpoint, early_stopping]
+        self.loss = running_loss / len(train_loader)
+
+        scheduler.step(self.loss)
+
+        self.save_last()
+
+        self.model.eval()
+
+        return self
+
+
+class TextFieldDetectorSSD(Model):
+    def __init__(self, num_classes=2, name_model="ModelTextField", save=False, log: Loger = None, DEBUG=False):
+        super(TextFieldDetectorSSD, self).__init__(name_model=name_model, save=save, log=log, DEBUG=DEBUG)
+        self.num_classes = num_classes
+
+        # Feature extraction layers
+        self.conv1 = nn.Conv2d(3, 32, kernel_size=3, padding=1)
+        self.conv2 = nn.Conv2d(32, 64, kernel_size=3, padding=1)
+        self.conv3 = nn.Conv2d(64, 128, kernel_size=3, padding=1)
+
+        # Prediction layers for bounding boxes and class scores
+        self.loc_head = nn.Conv2d(128, 4 * 4, kernel_size=3, padding=1)  # 4 bounding box coords per anchor
+        self.cls_head = nn.Conv2d(128, num_classes * 4, kernel_size=3, padding=1)  # num_classes scores per anchor
+
+        self.optimizer = optim.Adam(self.parameters())
+
+    def forward(self, x):
+        x = nn.ReLU()(self.conv1(x))
+        x = nn.MaxPool2d(2, 2)(x)
+        x = nn.ReLU()(self.conv2(x))
+        x = nn.MaxPool2d(2, 2)(x)
+        x = nn.ReLU()(self.conv3(x))
+        
+        loc_preds = self.loc_head(x).permute(0, 2, 3, 1).contiguous()
+        cls_preds = self.cls_head(x).permute(0, 2, 3, 1).contiguous()
+
+        # Reshape predictions to (batch, num_anchors, 4) for bbox and (batch, num_anchors, num_classes)
+        loc_preds = loc_preds.view(loc_preds.size(0), -1, 4)
+        cls_preds = cls_preds.view(cls_preds.size(0), -1, self.num_classes)
+
+        return loc_preds, cls_preds
+    
+    def train(self, dataset: Dataset, batch_size=32, epochs=10):
+        if self.model is None:
+            self.log["ERROR"]("Model is not initialized")
+            raise Exception("Model is not initialized")
+        
+        train_loader = dataset.get_dataloader(batch_size=batch_size, shuffle=True)
+        criterion_bbox = nn.MSELoss()  # Loss for bounding box regression
+        criterion_class = nn.CrossEntropyLoss()  # Loss for classification
+        scheduler = ReduceLROnPlateau(self.optimizer, mode='min', factor=0.5, patience=2, verbose=True)  # Scheduler
+        running_loss = 0.0
+
+        for _ in range(epochs):
+            self.model.train()
+            for images, labels in train_loader:
+                self.optimizer.zero_grad()
+                bboxes, label = labels
+                pred_bboxes, pred_classes = self.model(images)
+                loss_bbox = criterion_bbox(pred_bboxes, bboxes)
+                loss_class = criterion_class(pred_classes, label)
+                
+                # Combined loss
+                loss = loss_bbox + loss_class
+                loss.backward()
+                self.optimizer.step()
+
+                running_loss += loss.item()
+            
+            self.log["INFO"](f"Epoch {self.epoch+1}/{epochs}, Loss: {running_loss/len(train_loader)}")
+
+            self.epoch += 1
+
+            if running_loss < self.best_loss:
+                self.save_best(running_loss)
+                self.best_loss = running_loss
+        
+        self.loss = running_loss / len(train_loader)
+
+        scheduler.step(self.loss)
+
+        self.save_last(self.loss)
+
+        return self

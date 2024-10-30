@@ -17,13 +17,13 @@ class Data:
 
     def get(self) -> np.ndarray:
         if isinstance(self.data, Generator):
-            return np.array(self.loop_generator(self.data))
+            self.data = np.array(self.loop_generator(self.data))
         
         if isinstance(self.data, list):
             return np.array(self.data)
         
         if not isinstance(self.data, np.ndarray):
-            return np.array([self.data])
+            return self.data
         
 
     @property
