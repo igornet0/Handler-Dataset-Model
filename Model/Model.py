@@ -2,13 +2,10 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.optim.lr_scheduler import ReduceLROnPlateau
-from torchvision import transforms
-from PIL import Image
 import os
 
-from math import ceil
+from tqdm import tqdm
 
-import numpy as np
 from Dataset import Dataset
 from Log import Loger
 
@@ -135,20 +132,22 @@ class ModelClassification(Model):
         scheduler = ReduceLROnPlateau(self.optimizer, mode='min', factor=0.5, patience=2, verbose=True)  # Scheduler
         running_loss = 0.0
 
-        for _ in range(epochs):
+        loop_train = tqdm(range(epochs), desc="Train", total=epochs, leave=False)
+
+        for _ in loop_train:
             if test:
                 bath_test = {}
 
             self.model.train()
 
             for bath in loader:
-                for images, labels in bath:
-                    if test and len(bath_test.values()) <= len(dataset) * dataset.test_size and not images in bath_test:
-                        bath_test[images] = labels
+                for image, label in bath:
+                    if test and len(bath_test.values()) <= len(dataset) * dataset.test_size and not image in bath_test:
+                        bath_test[image] = label
                         continue
 
-                    outputs = self.model(images)
-                    loss = criterion(outputs, labels)
+                    outputs = self.model(image)
+                    loss = criterion(outputs, label)
                 
                     self.optimizer.zero_grad()
                     loss.backward()
@@ -156,8 +155,10 @@ class ModelClassification(Model):
 
                     running_loss += loss.item()
             
-            self.log["INFO"](f"Epoch {self.epoch+1}/{epochs}, Loss: {running_loss/len(dataset)}")
-
+            # self.log["INFO"](f"Epoch {self.epoch+1}/{epochs}, Loss: {running_loss/len(dataset)}")
+            loop_train.set_description(f"Train | Epoch: {self.epoch+1}/{epochs} | Loss: {running_loss}",
+                            refresh=True)
+            
             self.epoch += 1
 
             if running_loss < self.best_loss:

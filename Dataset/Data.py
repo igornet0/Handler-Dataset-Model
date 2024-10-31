@@ -41,7 +41,7 @@ class Data:
 
 class Image(Data):
 
-    def __init__(self, data: Union[str, Generator], args: tuple = None, type: str = "train", path_data: str = None, 
+    def __init__(self, data: Union[str, Generator], args: tuple = None, path_data: str = None, 
                  desired_size: tuple = None):
         
         """
@@ -55,7 +55,7 @@ class Image(Data):
         if isinstance(data, str):
             data = cv2.imread(data)
         
-        super().__init__(data, args, type)
+        super().__init__(data, args)
 
         if desired_size is None:
             desired_size = data.shape
@@ -84,14 +84,16 @@ class Image(Data):
 
     def resize(self) -> np.ndarray:
         self.data = cv2.resize(self.data, self.desired_size[:2])
+        self.resize_flag = True
         return self.data
     
     
     def normalize(self) -> np.ndarray:
-        self.data = self.data / 255
+        if max(self.flatten()) > 1:
+            self.data = self.data / 255
+        
         return self.data
     
-
     def rotate(self):
         self.data = cv2.rotate(self.data, cv2.ROTATE_90_COUNTERCLOCKWISE)
         self.rotate_flag = True
@@ -99,13 +101,9 @@ class Image(Data):
     
     def get(self) -> np.ndarray:
         if self.data.shape != self.desired_size:
-            image = self.resize(self.data)
-            self.resize_flag = True
-        else:
-            self.resize_flag = False
-            image = self.data
+            self.resize()
         
-        return self.normalize(image)
+        return self.normalize()
     
     @property
     def shape(self):

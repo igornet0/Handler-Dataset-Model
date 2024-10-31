@@ -7,16 +7,16 @@ class Loger:
     def __init__(self, file=None):
         self.file = file
         self.args = "INFO"
-        self.off = False
+        self._off = False
 
     @property
     def off(self):
-        self.off = True
+        self._off = True
         return self
 
     @property
     def on(self):
-        self.off = False
+        self._off = False
         return self
 
 
@@ -35,7 +35,7 @@ class Loger:
                 f.write(f"{type}: {message}\n")
 
     def __call__(self, message):
-        if self.off:
+        if self._off:
             return 
         return self.log(message, type=self.args)
 
