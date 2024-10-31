@@ -1,85 +1,86 @@
-import cv2
-from os import listdir
+import random
+from os import listdir, walk
 from os.path import join, isdir, exists
-from types import FunctionType as function
+from typing import Union, Iterable
+from torch.utils.data import Dataset as DataLoader
 import matplotlib.pyplot as plt
-import tensorflow as tf
-from sklearn.model_selection import train_test_split
 
 from .Label import *
+from .Labels import *
 from .Data import *
 
 class Dataset:
 
-    def __init__(self, data: (str | list), labels = None, output_shape: int = None, shuffle: bool = False, 
-                 split: bool = True, test_size: float = 0.2):
+    def __init__(self, data: Union[str, Iterable], labels: Labels = None, output_shape: int = None, 
+                 test_size: float = 0.2):
 
+        """
+        :param data: Path to the folder containing the data or a list of data
+        :param labels: Path to the folder containing the labels or a list of labels
+        :param output_shape: Shape of the output data
+        :param test_size: float indicating the proportion of the data to be used for testing
+        """
+        
         if not isinstance(labels, Labels):
-            path = False
-            if "/" in labels:
-                if not exists(labels):
-                    raise Exception(f"Labels path not found: {labels}")
-                
-                path = True
-
-            labels = Labels(labels, path=path, output_shape=output_shape)
+            labels = Labels(labels, output_shape=output_shape)
 
         self.data = Data(data)
         self.labels = labels
-
-        self.shuffle = shuffle
-        self.split = split
         self.test_size = test_size
 
+    
+    def get_data(self) -> iter:
+        for data in self:
+            if not isinstance(data, Data):
+                continue
 
-    def generator_data(self) -> iter:
-        if self.labels:
-            yield from self.get_data_label()
-        else:
-            for data in self:
-                yield data
+            yield data
+
 
     def get_label(self, data: Data) -> Label:
         return self.labels[data].get_label()
 
-    def get_data_label(self):
 
-        for data, label in zip(self, self.labels):
-            label = label.get()
+    def get_data_label(self) -> iter:
+        if self.labels.get_labels() is None:
+            raise ValueError("Labels not found")
+
+        for data in self.get_data():
+
+            label = self.get_label(data)
+
             if label is None:
                 continue
 
             yield data, label
 
 
-    def create_data(self) -> tf.data.Dataset:
-        ds = tf.data.Dataset.from_generator(
-                self.generator_data,
-                output_signature=(
-                    tf.TensorSpec(shape=self.shape),
-                    tf.TensorSpec(shape=self.labels.shape),
-                ),
-            )
-        
-        return ds
-    
-    def __iter__(self):
-        yield from self.data.get_data()
-    
-    def get_ds(self):
-        if self.split:
-            ds = self.create_data()
-            train_size = int(len(self) * (1 - self.test_size))
+    def get_bath(self, batch_size: int = 32, shuffle: bool = True, test: bool = False) -> iter:
+        bath = []
 
-            train_ds = ds.take(train_size)
-            test_ds = ds.skip(train_size)
-            return train_ds, test_ds
+        if self.labels.get_labels() is not None:
+            dataset = self.get_data_label()
+        else:
+            dataset = self.get_data()
         
-        return self.create_data()
+        for data in dataset:
+            bath.append(data)
+            if len(bath) == batch_size:
+                if shuffle:
+                    random.shuffle(bath)
+                yield bath
+                bath = []
+
+        return bath if not shuffle else random.shuffle(bath)
+
+    def __iter__(self) -> iter:
+        yield from self.data
+
 
     def __len__(self):
         return len(self.data)
     
+
     @property
     def shape(self):
         return self.data.shape
@@ -87,84 +88,75 @@ class Dataset:
 
 class DatasetImage(Dataset):
 
-    def __init__(self, data_path: str, labels: (str | function | list | Label) = "labels/", 
+    def __init__(self, data_path: str, labels: Labels = None, 
                  extension: str = ".png", 
-                 desired_size = (500, 500, 3), rotate: bool = False,
-                 shuffle: bool = False, split: bool = True, test_size: float = 0.2):
+                 desired_size: tuple = None, rotate: bool = False, test_size: float = 0.2):
         
-        super().__init__(data=None, labels=labels, output_shape=desired_size, shuffle=shuffle, split=split, test_size=test_size)
+        super().__init__(data=None, labels=labels, output_shape=desired_size, test_size=test_size)
 
         self.data_path = data_path
 
         self.desired_size = desired_size
         self.extension = extension
-        self.rot = rotate
+        self.rotate = rotate
 
-    
-    def get_files(self, path: str, files_only: bool = True):
-        files = listdir(path)
-
-        return filter(lambda x: x.endswith(self.extension), files) if files_only else files
-    
-    def gen_image(self, path_file: str):
-        for file in self.get_files(path_file):
-            yield join(path_file, file)
-    
-    def get_path_images(self):
-        files = self.get_files(self.data_path, False)
-        buffer_gen = {}
-        for image_file in files:
-            path_data = join(self.data_path, image_file)
-            if isdir(path_data):
-                buffer_gen[path_data] = self.gen_image(path_data)
-            else:
-                yield path_data
-
-        if buffer_gen:
-            buffer_size = 5
-            while True:
-                for path_file, gen in buffer_gen.items():
-                    for _ in range(buffer_size):
-                        try:
-                            yield next(gen)
-                        except StopIteration:
-                            buffer_gen[path_data] = self.gen_image(path_file)
-
-    def get_data_from_path(self):
-        for path_file in self.get_path_images():
-            image = cv2.imread(path_file)
-
-            if image is None:
-                continue
-            
-            yield Image(image, path_file, self.desired_size, self.rot)
-
-    def gen_rotate(self, data: Image):
-        for _ in range(4):
-            image = data.get_data()
-            label = self.get_label(data).get()
-            if label is None:
-                continue
-
-            yield image, label
+    def set_rotate(self, rotate: bool):
+        if not isinstance(rotate, bool):
+            raise ValueError("rotate must be a boolean")
         
-        self.labels.clear_buffer()
+        self.rotate = rotate
 
-    def get_data_label(self):
-        for data in self:
-            if self.rot:
-                try:
-                    yield from self.gen_rotate(data)
-                except StopIteration:
-                    pass
+    def get_image(self, path_files: str) -> iter:
+        for file in listdir(path_files):
+            if not file.endswith(self.extension):
                 continue
+            yield join(path_files, file)
+    
 
-            image = data.get_data()
-            label = self.get_label(data).get()
+    def gen_buffer(self, buffer_gen: dict):
+        for _, gen in buffer_gen.items():
+            while True:
+                try:
+                    yield next(gen)
+                except StopIteration:
+                    break
+
+    def get_path_images(self):
+        for path_data in listdir(self.data_path):
+            yield path_data
+
+
+    def get_data_from_path(self) -> iter:
+        for path_file in self.get_path_images():
+            for image_file in self.get_image(join(self.data_path, path_file)):
+                yield Image(image_file, desired_size=self.desired_size, path_data=path_file)
+
+
+    def get_data(self):
+        for data in super().get_data():
+
+            if self.rotate:
+                for _ in range(4):
+                    data.rotate()
+                    yield data
+
+            else:
+                yield data
+
+    
+    def get_data_label(self) -> iter:
+        if self.labels.get_labels() is None:
+            raise ValueError("Labels not found")
+
+        for data in self.get_data():
+
+            label = self.get_label(data)
+
             if label is None:
                 continue
 
-            yield image, label
+            yield data, label
+
 
     def __iter__(self):
         yield from self.get_data_from_path()
@@ -175,21 +167,12 @@ class DatasetImage(Dataset):
     
 
     def get_col_files(self):
-        files_col = 0
-        for file in self.get_files(self.data_path, False):
-            if isdir(join(self.data_path, file)):
-                files_col += len(list(self.get_files(join(self.data_path, file))))
-            else:
-                if not file.endswith(self.extension):
-                    continue
-                files_col += 1
-
-        return files_col
+        return len(list(self.get_data()))
 
 
     def __len__(self):
         files_col = self.get_col_files()
-        if self.rot:
+        if self.rotate:
             files_col *= 4
 
         return files_col

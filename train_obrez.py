@@ -1,12 +1,10 @@
-import tensorflow as tf
-from tensorflow.keras.layers import Conv2D, MaxPooling2D, Flatten, Dense
+
 import numpy as np
 from sklearn.model_selection import train_test_split
 import cv2
 import json
 from os import listdir
 from os.path import isfile, join
-from tensorflow.keras.models import load_model
 from tredprocess import show_img
 
 import tqdm

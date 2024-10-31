@@ -1,58 +1,111 @@
-import json, random, math
-from os.path import join
-from os import listdir
-from types import FunctionType as function
+import json, math
 
 import numpy as np
 
 from .Data import *
+import os
 
 class Label:
 
     def __init__(self, label):
+        if label is None:
+            raise ValueError("Label is None")
+
         self.label = label
                  
     def get(self) -> list:
         if isinstance(self.label, list):
             return self.label
         
-        if self.label is None:
-            return self.label
-        
         return [self.label]
+    
+    @property
+    def shape(self):
+        return np.array(self.get()).shape
 
-class LabelFile:
+    def __len__(self):
+        if not isinstance(self.label, list):
+            return 0
+        
+        return len(self.label)
 
-    def __init__(self, path_files: str):
+
+class LabelF(Label):
+
+    def __init__(self, path_files: str) -> None:
+        if os.path.exists(path_files):
+            path_files = os.path.abspath(path_files)
+        else:
+            raise ValueError(f"Path {path_files} does not exist")
+
         self.path = path_files
         self.extension = path_files.split(".")[-1]
         
-        self.label = self.get_file_data()
+        super().__init__(self.get_file_data())
 
-    def round_point(self, point):
-        return [round(p, 2) for p in point]
-    
+
     def get_file_data(self) -> list:
 
-        if not self.path.endswith(self.extension):
+        if self.extension == "json":
+            with open(self.path) as file:
+                data = json.load(file)
+            return data.get("label", [])
+        
+        if self.extension == "txt":
+            with open(self.path) as file:
+                data = file.read().splitlines()
+            return data
+        
+        return None
+
+
+
+class LabelP(Label):
+
+    def __init__(self, label = None) -> None:
+        if isinstance(label, str):
+            label = self.get_file_data(label)
+
+        super().__init__(label)
+
+
+    def get_file_data(self, path_file: str):
+        if path_file is None:
             return None
         
-        with open(self.path) as file:
+        with open(path_file) as file:
             data = json.load(file)
             
-        points = data.get("shapes", [{}])[0].get("points", data.get("points", []))
-        if not points:
-            return None
+        shapes = data.get("shapes", [{}])
+        labels = []
+        for shape in shapes:
+            points = shape.get("points", [])
+            if not points:
+                continue
+            label = [coord for point in points for coord in self.round(point)]
+            labels.append(label)
+
+        self.label = labels
+
+        return self.label
+    
+
+    def round(self):
+        if isinstance(self.label[0], list):
+            label = np.array(self.label).reshape((-1, 2))
+            self.label = [self.round(point) for point in label]
+        else:
+            self.label = [round(x) for x in self.label]
         
-        label = [coord for point in points for coord in self.round_point(point)]
-
-        return label
-
-    def get_label(self) -> list:
         return self.label
 
-    def resize_points(self, shape, shape_new):
+
+    def resize(self, shape, shape_new):
         new_points = []
+        if isinstance(self.label[0], list):
+            labels = np.array(self.label)
+            return labels.map(lambda x: self.resize(x, shape, shape_new))
+
         points = np.array(self.label)
         points = points.reshape((-1, 2))
 
@@ -62,10 +115,12 @@ class LabelFile:
             new_points.extend([new_x, new_y])
 
         self.label = new_points
-        return self.label
+        return new_points
 
-    def back_coordinates(self, width, height):
+
+    def back(self, width, height):
         new_points = []
+        
         points = np.array(self.label)
         points = points.reshape((-1, 2))
 
@@ -77,8 +132,12 @@ class LabelFile:
         self.label = new_points
         return self.label
 
-    def rotate_polygon(self, angle_degrees, center_x, center_y):
 
+    def rotate(self, angle_degrees, center_x, center_y):
+        if isinstance(self.label[0], list):
+            labels = np.array(self.label)
+            return labels.map(lambda x: self.rotate(x, angle_degrees, center_x, center_y))
+        
         points = np.array(self.label)
         points = points.reshape((-1, 2))
 
@@ -105,70 +164,5 @@ class LabelFile:
             rotated_points.extend([new_x, new_y])
         
         self.label = rotated_points
-        return self.label
+        return rotated_points    
     
-
-class Labels:
-
-    def __init__(self, labels: (str | function | list | Label) = "labels", path: bool = False, output_shape: int = None):
-        
-        self.labels = labels
-        self.path = path
-        self.args = None
-
-        self.buffer = {}
-
-        self.output_shape = output_shape
-
-    def get_labels_from_path(self):
-        for labels_file in listdir(self.labels):
-            yield LabelFile(labels_file, self.path, extension=labels_file.split('.')[-1])
-    
-    
-    def searh_label_path(self, name_file: str):
-        for labels_file in listdir(self.labels):
-            if labels_file.split('.')[0] == name_file.split('.')[0]:
-                return join(self.labels, labels_file)
-            
-    def clear_buffer(self):
-        self.buffer.clear()
-
-    def __getitem__(self, item):
-        self.args = item        
-        return self
-
-    def __iter__(self):
-        if self.path:
-            yield from self.get_labels_from_path()
-        else:
-            if isinstance(self.labels, list):
-                for label in self.labels:
-                    if isinstance(label, Label) or isinstance(label, LabelFile):
-                        yield label
-                    else:
-                        yield Label(label)
-            else:
-                return self.get_label()
-
-    def get_label(self) -> Label:
-        if not self.args is None:
-            item = self.args
-            if isinstance(item, Image) and self.path:
-                label: LabelFile = self.buffer.setdefault(item.path_data, 
-                                                        LabelFile(self.searh_label_path(item.image_file)))
-                
-                if item.resize:
-                    label.resize_points(item.size, item.desired_size)
-            
-                if item.rotate:
-                    label.rotate_polygon(-90, item.desired_size[0]/2, item.desired_size[1]/2)
-
-                return label
-            
-        if isinstance(self.labels, function):
-            return Label(self.labels(self.args))
-
-
-    @property
-    def shape(self):
-        return self.output_shape
