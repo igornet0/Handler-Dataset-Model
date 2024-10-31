@@ -5,17 +5,15 @@ from main import get_classes
 import os
 import shutil
 
-def test_model_classification(model: (Model | str), path_dataset_test="test"):
+def test_model_classification(model: (ModelClassification | str), path_dataset_test="test"):
 
     label_dict = get_classes(path_dataset_test)
     print(label_dict)
     labels = Labels(lambda x: label_dict[x.path_data.split(os.path.sep)[-2]], 
                     output_shape=len(label_dict))
     
-    if not isinstance(model, Model):
-        model_new = ModelClassification(name_model="ModelClassification250.keras")
-        model_new.load_model(model)
-        model = model_new
+    if not isinstance(model, ModelClassification):
+        model = ModelClassification().load(model)
 
     dataset_train = DatasetImage(path_dataset_test, labels=labels, desired_size=(250, 250, 3))
     labels = get_classes(path_dataset_test, one_hot=False)

@@ -1,3 +1,3 @@
-from .Model import ModelClassification, ModelPolygons, Model
+from .Model import ModelClassification, TextFieldDetectorSSD
 
-__all__ = ["Model", "ModelClassification", "ModelPolygons"]
+__all__ = ["ModelClassification", "TextFieldDetectorSSD"]

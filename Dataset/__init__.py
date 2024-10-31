@@ -1,8 +1,9 @@
 from .Dataset import DatasetImage, Dataset
-from .Label import Label, LabelFile, Labels, LabelPolygon, LabelsFile, LabelsPolygon
-from .Data import Data, Image
+from .Label import Label, LabelF, LabelP
+from .Labels import Labels, LabelsFile, LabelsPolygon
+from .Data import Data, Image, File
 
 __all__ = ["Dataset", "DatasetImage", 
-           "Labels", "Label", "LabelFile", "LabelsFile", "LabelPolygon", "LabelsPolygon",
-           "Data", "Image"
+           "Labels", "Label", "LabelF", "LabelsFile", "LabelP", "LabelsPolygon",
+           "Data", "Image", "File"
            ]
