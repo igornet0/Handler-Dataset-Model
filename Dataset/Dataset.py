@@ -100,6 +100,9 @@ class DatasetImage(Dataset):
     def __init__(self, data_path: str, labels: Labels = None, 
                  extension: str = ".png", 
                  desired_size: tuple = None, rotate: bool = False, test_size: float = 0.2):
+
+        if not os.path.exists(data_path):
+            raise ValueError("Path data not found")
         
         super().__init__(data=None, labels=labels, output_shape=desired_size, test_size=test_size)
 
@@ -138,7 +141,6 @@ class DatasetImage(Dataset):
     def get_data_from_path(self) -> iter:
         for path_file in self.get_path_images():
             for image_file in self.get_images(join(self.data_path, path_file)):
-                
                 yield Image(image_file, desired_size=self.desired_size, path_data=path_file)
 
 

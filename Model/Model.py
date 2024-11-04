@@ -56,7 +56,8 @@ class Model(nn.Module):
             'epoch': self.epoch + 1,
             'model_state_dict': self.model.state_dict(),
             'optimizer_state_dict': self.optimizer.state_dict(),
-            'loss': self.loss
+            'loss': self.loss,
+            'best_loss': self.best_loss
         }, checkpoint_path)
 
         if message:
@@ -94,48 +95,61 @@ class Model(nn.Module):
         checkpoint = torch.load(checkpoint_path)
         self.model.load_state_dict(checkpoint['model_state_dict'])
         self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-        epoch = checkpoint['epoch']
-        loss = checkpoint['loss']
+        self.epoch = checkpoint['epoch']
+        self.loss = checkpoint['loss']
+        self.best_loss = checkpoint['best_loss']
+
         
-        self.log["INFO"](f"Checkpoint loaded from {checkpoint_path} at epoch {epoch} with best validation loss {loss:.4f}")
+        self.log["INFO"](f"Checkpoint loaded from {checkpoint_path} at epoch {self.epoch} with best validation loss {self.loss:.4f}")
 
         return self
 
 
 class ModelClassification(Model):
-    def __init__(self, input_size: tuple=(250, 250, 3), num_classes=1, name_model="ModelClassification", save=False, log: Loger = None, DEBUG=False):
+    def __init__(self, num_classes=1, name_model="ModelClassification", save=False, log: Loger = None, DEBUG=False):
+        
         super(ModelClassification, self).__init__(name_model=name_model, save=save, log=log, DEBUG=DEBUG)
-        H,W, _ = input_size
         self.num_classes = num_classes
-        self.model = nn.Sequential(
-            nn.Conv2d(in_channels=3, out_channels=64, kernel_size=3),
+
+        self.layers = nn.ModuleList()
+
+        self.add_conv_layer(3, 64)
+        self.add_conv_layer(64, 128)
+        self.add_conv_layer(128, 256)
+
+        self.fc1 = None
+        self.fc2 = nn.Linear(512, num_classes)
+
+        self.optimizer = optim.Adam(self.parameters())
+
+    def add_conv_layer(self, in_channels, out_channels, kernel_size=3):
+        conv_layer = nn.Sequential(
+            nn.Conv2d(in_channels=in_channels, out_channels=out_channels, kernel_size=kernel_size),
             nn.ReLU(),
             nn.MaxPool2d(2, 2),
-            nn.Conv2d(in_channels=64, out_channels=128, kernel_size=3, padding=1),
-            nn.ReLU(),
-            nn.MaxPool2d(2, 2),
-            nn.Conv2d(in_channels=128, out_channels=256, kernel_size=3, padding=1),
-            nn.ReLU(),
-            nn.MaxPool2d(2, 2),
-            nn.Flatten(),
-            nn.Linear(256*(H-2)*(W-2)//64, 512),
-            nn.ReLU(),
-            nn.Dropout(),
-            nn.Linear(512, num_classes),
-            nn.Softmax()
         )
 
-        self.optimizer = optim.Adam(self.model.parameters())
+        self.layers.append(conv_layer)
+        
 
     def forward(self, x):
-        return self.model(x)
-    
-    def train(self, dataset: Dataset, batch_size=32, epochs=10, test: bool=False):
-        if self.model is None:
-            self.log["ERROR"]("Model is not initialized")
-            raise Exception("Model is not initialized")
+        for layer in self.layers:
+            x = layer(x)
+
+        x = nn.Flatten()(x)
+
+        if self.fc1 is None:
+            self.fc1 = nn.Linear(x.size(1), 512)
         
-        self.model.to(self.device)
+        x = self.fc1(x)
+        x = nn.ReLU()(x)
+        x = nn.Dropout()(x)
+        x = self.fc2(x)
+
+        return nn.Softmax(dim=1)(x)
+    def train_in_dataset(self, dataset: Dataset, batch_size=32, epochs=10, test: bool=False):
+        
+        self.to(self.device)
 
         transform = transforms.Compose([
             transforms.ToTensor()
@@ -148,44 +162,42 @@ class ModelClassification(Model):
         scheduler = ReduceLROnPlateau(self.optimizer, mode='min', factor=0.5, patience=2, verbose=True)  # Scheduler
         running_loss = 0.0
 
-        loop_train = tqdm(range(epochs), desc="Train", total=epochs, leave=False)
         criterion.to(self.device)
 
-        for _ in loop_train:
+        for epoch in range(epochs):
 
-            self.model.train()
+            self.train()
+            loop_train = tqdm(loader, desc=f"Train | Epoch: {epoch + 1}/{epochs}", leave=True)
 
-            for images, labels in loader:
+            for images, labels in loop_train:
                 # print(images, labels)
                 # (images, labels) - (images.to(self.device), labels.to(self.device))
-                outputs = self.model(images)
+                outputs = self(images)
                 loss = criterion(outputs, labels)
             
                 self.optimizer.zero_grad()
                 loss.backward()
                 self.optimizer.step()
 
-                running_loss += loss.item()
+                running_loss += loss.item() / len(labels)
             
                 # self.log["INFO"](f"Epoch {self.epoch+1}/{epochs}, Loss: {running_loss/len(dataset)}")
-                loop_train.set_description(f"Train | Epoch: {self.epoch+1}/{epochs} | Loss: {running_loss}",
-                                refresh=True)
+                loop_train.set_postfix(loss=running_loss)
             
             self.epoch += 1
 
             if running_loss < self.best_loss:
                 self.save_best(running_loss)
                 self.best_loss = running_loss
-        
-        self.loss = running_loss / len(dataset)
-
-        running_loss = 0
-
-        scheduler.step(self.loss)
+            
+            scheduler.step(running_loss)
+            loop_train.set_description(f"Train | Epoch: {epoch + 1}/{epochs} | Loss: {running_loss:.4f}", refresh=True)
+            self.loss = running_loss
+            running_loss = 0
 
         self.save_last()
 
-        self.model.eval()
+        self.eval()
 
         return self
 

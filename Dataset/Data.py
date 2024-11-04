@@ -52,7 +52,8 @@ class Image(Data):
             desired_size (tuple): Desired shape of the image.
             rotate (bool): Whether to rotate the image by 90 degrees.
         """
-        
+        if data is None:
+            print(data, path_data) 
         if isinstance(data, str):
             data = cv2.imread(data)
         

@@ -57,6 +57,7 @@ class HandlerDataset(_Dataset):
             data = self.data[idx]
             label = self.labels[idx]
 
+        
         if self.transform:
             data = self.transform(data).float()
         

@@ -65,11 +65,11 @@ def train_model_classification(path_dataset, path_model=None,
     dataset = DatasetImage(path_dataset, labels=labels, desired_size=desired_size,
                                  rotate=True)
 
-    model = ModelClassification(desired_size, um_classes=labels.output_shape, save=save_checkpoints, DEBUG=DEBUG)
+    model = ModelClassification(num_classes=labels.output_shape, save=save_checkpoints, DEBUG=DEBUG)
 
     if path_model is not None:
         model.load(path_model)
 
-    model.train(dataset, batch_size=batch_size, epochs=epochs, test=test)
+    model.train_in_dataset(dataset, batch_size=batch_size, epochs=epochs, test=test)
 
     return model
