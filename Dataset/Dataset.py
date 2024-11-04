@@ -111,10 +111,10 @@ class DatasetImage(Dataset):
         self.desired_size = desired_size
     
     def set_extension(self, extension: Union[str, set]):
-        if not isinstance(extension, str) and not isinstance(extension, set):
-            raise ValueError("extension must be a string or a set")
-        
-        self.extension = set(extension) if isinstance(extension, str) else extension
+        if isinstance(extension, str):
+            extension = {extension}
+            
+        self.extension = set(extension) if not isinstance(extension, set) else extension
 
     def set_rotate(self, rotate: bool):
         if not isinstance(rotate, bool):
