@@ -2,7 +2,7 @@ from Dataset import *
 from Model import *
 from main import get_classes
 
-from test import *
+# from test import *
 
 import os
 
@@ -48,10 +48,12 @@ import os
 
 def train_model_classification(path_dataset, path_model=None, 
                                save_checkpoints=True, batch_size=32, epochs=10, 
-                               test: bool=False, DEBUG=False) -> ModelClassification:
+                               test:bool=False, DEBUG=False) -> ModelClassification:
 
     label = get_classes(path_dataset)
     print(label)
+
+    desired_size = (500, 500, 3)
 
     def get_label(x):
         path = x.path_data
@@ -60,10 +62,10 @@ def train_model_classification(path_dataset, path_model=None,
     labels = Labels(lambda x: get_label(x), 
                     output_shape=len(label))
     
-    dataset = DatasetImage(path_dataset, labels=labels, desired_size=(250, 250, 3),
-                                 rotate=False)
+    dataset = DatasetImage(path_dataset, labels=labels, desired_size=desired_size,
+                                 rotate=True)
 
-    model = ModelClassification(input_shape=(250, 250, 3), num_classes=labels.output_shape, save=save_checkpoints, DEBUG=DEBUG)
+    model = ModelClassification(desired_size, um_classes=labels.output_shape, save=save_checkpoints, DEBUG=DEBUG)
 
     if path_model is not None:
         model.load(path_model)

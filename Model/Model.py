@@ -2,6 +2,11 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.optim.lr_scheduler import ReduceLROnPlateau
+from torch.utils.data import DataLoader
+from torchvision import transforms
+
+from .HandlerDataset import HandlerDataset
+
 import os
 
 from tqdm import tqdm
@@ -12,6 +17,8 @@ from Log import Loger
 class Model(nn.Module):
     def __init__(self, name_model="Model", save=False, log: Loger = None, DEBUG=False):
         super(Model, self).__init__()
+
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         self.model = None
         self.optimizer = None
@@ -42,9 +49,6 @@ class Model(nn.Module):
         if self.model is None or self.optimizer is None:
             self.log["ERROR"]("Model or optimizer is not initialized")
             raise Exception("Model is not initialized") if self.model is None else Exception("Optimizer is not initialized")
-        
-        if not os.path.exists(checkpoint_path):
-            os.makedirs(checkpoint_path)
 
         
         # Save model state, optimizer state, and epoch information
@@ -99,21 +103,26 @@ class Model(nn.Module):
 
 
 class ModelClassification(Model):
-    def __init__(self, num_classes=1, name_model="ModelClassification", save=False, log: Loger = None, DEBUG=False):
+    def __init__(self, input_size: tuple=(250, 250, 3), num_classes=1, name_model="ModelClassification", save=False, log: Loger = None, DEBUG=False):
         super(ModelClassification, self).__init__(name_model=name_model, save=save, log=log, DEBUG=DEBUG)
-
+        H,W, _ = input_size
         self.num_classes = num_classes
         self.model = nn.Sequential(
-            nn.Conv2d(3, 32, kernel_size=3, padding=1),
+            nn.Conv2d(in_channels=3, out_channels=64, kernel_size=3),
             nn.ReLU(),
             nn.MaxPool2d(2, 2),
-            nn.Conv2d(32, 64, kernel_size=3, padding=1),
+            nn.Conv2d(in_channels=64, out_channels=128, kernel_size=3, padding=1),
+            nn.ReLU(),
+            nn.MaxPool2d(2, 2),
+            nn.Conv2d(in_channels=128, out_channels=256, kernel_size=3, padding=1),
             nn.ReLU(),
             nn.MaxPool2d(2, 2),
             nn.Flatten(),
-            nn.Linear(64 * 8 * 8, 128),
+            nn.Linear(256*(H-2)*(W-2)//64, 512),
             nn.ReLU(),
-            nn.Linear(128, num_classes)
+            nn.Dropout(),
+            nn.Linear(512, num_classes),
+            nn.Softmax()
         )
 
         self.optimizer = optim.Adam(self.model.parameters())
@@ -126,38 +135,41 @@ class ModelClassification(Model):
             self.log["ERROR"]("Model is not initialized")
             raise Exception("Model is not initialized")
         
-        loader = dataset.get_bath(batch_size=batch_size, shuffle=True)
+        self.model.to(self.device)
+
+        transform = transforms.Compose([
+            transforms.ToTensor()
+        ])
+
+        handler = HandlerDataset(dataset, transform=transform)
+        loader = DataLoader(handler, batch_size=batch_size)
 
         criterion = nn.CrossEntropyLoss()
         scheduler = ReduceLROnPlateau(self.optimizer, mode='min', factor=0.5, patience=2, verbose=True)  # Scheduler
         running_loss = 0.0
 
         loop_train = tqdm(range(epochs), desc="Train", total=epochs, leave=False)
+        criterion.to(self.device)
 
         for _ in loop_train:
-            if test:
-                bath_test = {}
 
             self.model.train()
 
-            for bath in loader:
-                for image, label in bath:
-                    if test and len(bath_test.values()) <= len(dataset) * dataset.test_size and not image in bath_test:
-                        bath_test[image] = label
-                        continue
-
-                    outputs = self.model(image)
-                    loss = criterion(outputs, label)
-                
-                    self.optimizer.zero_grad()
-                    loss.backward()
-                    self.optimizer.step()
-
-                    running_loss += loss.item()
+            for images, labels in loader:
+                # print(images, labels)
+                # (images, labels) - (images.to(self.device), labels.to(self.device))
+                outputs = self.model(images)
+                loss = criterion(outputs, labels)
             
-            # self.log["INFO"](f"Epoch {self.epoch+1}/{epochs}, Loss: {running_loss/len(dataset)}")
-            loop_train.set_description(f"Train | Epoch: {self.epoch+1}/{epochs} | Loss: {running_loss}",
-                            refresh=True)
+                self.optimizer.zero_grad()
+                loss.backward()
+                self.optimizer.step()
+
+                running_loss += loss.item()
+            
+                # self.log["INFO"](f"Epoch {self.epoch+1}/{epochs}, Loss: {running_loss/len(dataset)}")
+                loop_train.set_description(f"Train | Epoch: {self.epoch+1}/{epochs} | Loss: {running_loss}",
+                                refresh=True)
             
             self.epoch += 1
 
@@ -166,6 +178,8 @@ class ModelClassification(Model):
                 self.best_loss = running_loss
         
         self.loss = running_loss / len(dataset)
+
+        running_loss = 0
 
         scheduler.step(self.loss)
 

@@ -1,6 +1,7 @@
 import cv2
 import numpy as np
 import os
+import torch
 
 from typing import Union, Generator
 
@@ -99,7 +100,7 @@ class Image(Data):
         self.rotate_flag = True
         return self.data
     
-    def get(self) -> np.ndarray:
+    def get(self) -> torch.Tensor:
         if self.data.shape != self.desired_size:
             self.resize()
         
@@ -111,7 +112,7 @@ class Image(Data):
     
 
     def flatten(self):
-        return self.data.flat()
+        return self.data.flat
 
 
     def __len__(self):

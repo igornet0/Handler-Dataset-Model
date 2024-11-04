@@ -23,16 +23,16 @@ class Loger:
     def log(self, message, type="INFO"):
         if self.file is None:
             if type == "INFO":
-                print(f"{Style.BRIGHT}{Fore.GREEN}{type}: {message}{Style.RESET_ALL}")
+                print(f"[{Style.BRIGHT}{Fore.GREEN}{type}] {message}{Style.RESET_ALL}")
             elif type == "ERROR":
-                print(f"{Style.BRIGHT}{Fore.RED}{type}: {message}{Style.RESET_ALL}")
+                print(f"[{Style.BRIGHT}{Fore.RED}{type}] {message}{Style.RESET_ALL}")
             elif type == "WARNING":
-                print(f"{Style.BRIGHT}{Fore.YELLOW}{type}: {message}{Style.RESET_ALL}")
+                print(f"[{Style.BRIGHT}{Fore.YELLOW}{type}] {message}{Style.RESET_ALL}")
             else:
-                print(f"{Style.BRIGHT}{Fore.BLUE}{type}: {message}{Style.RESET_ALL}")
+                print(f"[{Style.BRIGHT}{Fore.BLUE}{type}] {message}{Style.RESET_ALL}")
         else:
             with open(self.file, "a") as f:
-                f.write(f"{type}: {message}\n")
+                f.write(f"[{type}] {message}\n")
 
     def __call__(self, message):
         if self._off:

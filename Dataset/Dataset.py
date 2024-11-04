@@ -72,6 +72,15 @@ class Dataset:
                 bath = []
 
         return bath if not shuffle else random.shuffle(bath)
+    
+    def get_loader(self):
+        if self.labels.get_labels() is not None:
+            dataset = self.get_data_label()
+        else:
+            dataset = self.get_data()
+        
+        for data in dataset:
+            yield data
 
     def __iter__(self) -> iter:
         yield from self.data
@@ -106,7 +115,7 @@ class DatasetImage(Dataset):
         
         self.rotate = rotate
 
-    def get_image(self, path_files: str) -> iter:
+    def get_images(self, path_files: str) -> iter:
         for file in listdir(path_files):
             if not file.endswith(self.extension):
                 continue
@@ -128,13 +137,13 @@ class DatasetImage(Dataset):
 
     def get_data_from_path(self) -> iter:
         for path_file in self.get_path_images():
-            for image_file in self.get_image(join(self.data_path, path_file)):
+            for image_file in self.get_images(join(self.data_path, path_file)):
+                
                 yield Image(image_file, desired_size=self.desired_size, path_data=path_file)
 
 
     def get_data(self):
         for data in super().get_data():
-
             if self.rotate:
                 for _ in range(4):
                     data.rotate()
@@ -167,16 +176,14 @@ class DatasetImage(Dataset):
     
 
     def get_col_files(self):
-        return len(list(self.get_data()))
-
-
+        return sum([len(files) for _, _, files in walk(self.data_path)])
+        
     def __len__(self):
-        files_col = self.get_col_files()
+        col = self.get_col_files()
         if self.rotate:
-            files_col *= 4
-
-        return files_col
-
+            col *= 4
+        
+        return col
     @staticmethod
     def show_img(img, label=None, polygon = False):
         if polygon:
