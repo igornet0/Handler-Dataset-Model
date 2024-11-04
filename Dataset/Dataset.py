@@ -136,15 +136,15 @@ class DatasetImage(Dataset):
         if path is not None:
             if not isdir(path):
                 raise ValueError(f"Path {path} is not a directory")
-
             path = path
         else:
             path = self.data_path
 
         for root, _, files in walk(path):
             for file in files:
-                if not any(file.endswith(ext) for ext in self.extension):
+                if not any([file.endswith(ext) for ext in self.extension]):
                     continue
+
                 yield Image(join(root, file), desired_size=self.desired_size)
 
     def get_path_images(self):
@@ -174,7 +174,6 @@ class DatasetImage(Dataset):
                 for _ in range(4):
                     data.rotate()
                     yield data
-
             else:
                 yield data
 
