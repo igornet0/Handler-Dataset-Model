@@ -63,7 +63,7 @@ def train_model_classification(path_dataset, path_model=None,
                     output_shape=len(label))
     
     dataset = DatasetImage(path_dataset, labels=labels, desired_size=desired_size,
-                            rotate=True)
+                            shuffle_path=True, rotate=True)
 
     model = ModelClassification(num_classes=labels.output_shape, save=save_checkpoints, DEBUG=DEBUG)
 
