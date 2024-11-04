@@ -1,6 +1,7 @@
 import cv2
 import numpy as np
 import os
+from pathlib import Path
 import torch
 
 from typing import Union, Generator
@@ -42,7 +43,7 @@ class Data:
 
 class Image(Data):
 
-    def __init__(self, data: Union[str, Generator], args: tuple = None, path_data: str = None, 
+    def __init__(self, data: Union[str, Generator], args: tuple = None, 
                  desired_size: tuple = None):
         
         """
@@ -52,9 +53,17 @@ class Image(Data):
             desired_size (tuple): Desired shape of the image.
             rotate (bool): Whether to rotate the image by 90 degrees.
         """
-        if data is None:
-            print(data, path_data) 
+
+        filter_extension = lambda x: x.endswith(".jpg") or x.endswith(".png") or x.endswith(".jpeg")
+
         if isinstance(data, str):
+            if not filter_extension(data):
+                raise ValueError(f"File {data} does not have the extension .jpg, .png or .jpeg")
+            
+            if not os.path.exists(data):
+                raise ValueError(f"Path {data} does not exist")
+            
+            path_data = Path(data)
             data = cv2.imread(data)
         
         super().__init__(data, args)
@@ -65,14 +74,9 @@ class Image(Data):
         elif len(desired_size) != len(data.shape):
             raise Exception(f"Desired shape {desired_size} does not match data shape {data.shape}")
 
-        if not path_data is None:
-            self.path_data = path_data
-            self.image_file = path_data.split(os.path.sep)[-1]
-            self.extension = f".{self.path_data.split('.')[-1]}"
-        else:
-            self.image_file = "image.png"
-            self.extension = ".png"
-            self.path_data = self.image_file
+        self.path_data = path_data.parent
+        self.image_file = path_data.stem
+        self.extension = path_data.suffix
             
         self.desired_size = desired_size
         

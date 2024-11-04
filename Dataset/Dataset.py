@@ -30,11 +30,7 @@ class Dataset:
 
     
     def get_data(self) -> iter:
-        for data in self:
-            if not isinstance(data, Data):
-                continue
-
-            yield data
+        return self.data
 
 
     def get_label(self, data: Data) -> Label:
@@ -55,15 +51,10 @@ class Dataset:
             yield data, label
 
 
-    def get_bath(self, batch_size: int = 32, shuffle: bool = True, test: bool = False) -> iter:
+    def get_bath(self, batch_size: int = 32, shuffle: bool = True) -> iter:
         bath = []
-
-        if self.labels.get_labels() is not None:
-            dataset = self.get_data_label()
-        else:
-            dataset = self.get_data()
         
-        for data in dataset:
+        for data in self:
             bath.append(data)
             if len(bath) == batch_size:
                 if shuffle:
@@ -83,8 +74,7 @@ class Dataset:
             yield data
 
     def __iter__(self) -> iter:
-        yield from self.data
-
+        yield from self.get_loader()
 
     def __len__(self):
         return len(self.data)
@@ -98,8 +88,9 @@ class Dataset:
 class DatasetImage(Dataset):
 
     def __init__(self, data_path: str, labels: Labels = None, 
-                 extension: str = ".png", 
-                 desired_size: tuple = None, rotate: bool = False, test_size: float = 0.2):
+                 extension: Union[str, set] = ".png", 
+                 desired_size: tuple = None, rotate: bool = False,
+                 shuffle_path: bool = False, test_size: float = 0.2):
 
         if not os.path.exists(data_path):
             raise ValueError("Path data not found")
@@ -108,44 +99,77 @@ class DatasetImage(Dataset):
 
         self.data_path = data_path
 
+        self.set_desired_size(desired_size)
+        self.set_extension(extension)
+        self.set_rotate(rotate)
+        self.set_shuffle_path(shuffle_path)
+
+    def set_desired_size(self, desired_size: tuple):
+        if not isinstance(desired_size, tuple):
+            raise ValueError("desired_size must be a tuple")
+        
         self.desired_size = desired_size
-        self.extension = extension
-        self.rotate = rotate
+    
+    def set_extension(self, extension: Union[str, set]):
+        if not isinstance(extension, str) and not isinstance(extension, set):
+            raise ValueError("extension must be a string or a set")
+        
+        self.extension = set(extension) if isinstance(extension, str) else extension
 
     def set_rotate(self, rotate: bool):
         if not isinstance(rotate, bool):
             raise ValueError("rotate must be a boolean")
         
         self.rotate = rotate
-
-    def get_images(self, path_files: str) -> iter:
-        for file in listdir(path_files):
-            if not file.endswith(self.extension):
-                continue
-            yield join(path_files, file)
     
+    def set_shuffle_path(self, shuffle_path: bool):
+        if not isinstance(shuffle_path, bool):
+            raise ValueError("shuffle_path must be a boolean")
+        
+        self.shuffle_path = shuffle_path
 
-    def gen_buffer(self, buffer_gen: dict):
-        for _, gen in buffer_gen.items():
-            while True:
-                try:
-                    yield next(gen)
-                except StopIteration:
-                    break
+    def get_shuffle_path(self):
+        return self.shuffle_path
+    
+    def get_images(self, path: str = None) -> iter:
+
+        if path is not None:
+            if not isdir(path):
+                raise ValueError(f"Path {path} is not a directory")
+
+            path = path
+        else:
+            path = self.data_path
+
+        for root, _, files in walk(path):
+            for file in files:
+                if not any(file.endswith(ext) for ext in self.extension):
+                    continue
+                yield Image(join(root, file), desired_size=self.desired_size)
 
     def get_path_images(self):
         for path_data in listdir(self.data_path):
-            yield path_data
+            yield join(self.data_path, path_data)
 
+    def get_data_from_path_shuffle(self) -> iter:
+        buffer_path = {path_file: self.get_images(path_file) for path_file in self.get_path_images()}
+        while buffer_path:
+            for path_file, images in buffer_path.items():
+                try:
+                    image = next(images)
+                except StopIteration:
+                    buffer_path.pop(path_file)
+                    break
 
-    def get_data_from_path(self) -> iter:
-        for path_file in self.get_path_images():
-            for image_file in self.get_images(join(self.data_path, path_file)):
-                yield Image(image_file, desired_size=self.desired_size, path_data=path_file)
-
+                yield image
 
     def get_data(self):
-        for data in super().get_data():
+        if self.get_shuffle_path():
+            dataset = self.get_data_from_path_shuffle()
+        else:
+            dataset = self.get_images()
+
+        for data in dataset:
             if self.rotate:
                 for _ in range(4):
                     data.rotate()
@@ -154,29 +178,9 @@ class DatasetImage(Dataset):
             else:
                 yield data
 
-    
-    def get_data_label(self) -> iter:
-        if self.labels.get_labels() is None:
-            raise ValueError("Labels not found")
-
-        for data in self.get_data():
-
-            label = self.get_label(data)
-
-            if label is None:
-                continue
-
-            yield data, label
-
-
-    def __iter__(self):
-        yield from self.get_data_from_path()
-
-
     def get_output_shape(self):
         return self.desired_size
     
-
     def get_col_files(self):
         return sum([len(files) for _, _, files in walk(self.data_path)])
         
@@ -186,6 +190,7 @@ class DatasetImage(Dataset):
             col *= 4
         
         return col
+    
     @staticmethod
     def show_img(img, label=None, polygon = False):
         if polygon:
@@ -206,7 +211,6 @@ class DatasetImage(Dataset):
         plt.imshow(img)
         plt.show()
         
-
     @property
     def shape(self):
         return self.desired_size

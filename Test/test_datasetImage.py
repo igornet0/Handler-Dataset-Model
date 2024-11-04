@@ -18,37 +18,50 @@ class TestDatasetImage:
 
         assert self.ds.data_path == self.path_dataset
 
+    def test_get_data(self):
+        data = list(self.ds.get_data())
+        assert len(data) == 1500
+
+        for d in data:
+            assert isinstance(d, Image)
 
     def test_get_path_images(self):
         paths = list(self.ds.get_path_images())
+        paths.sort()
         
         assert len(paths) == 3
-        assert paths[0] == '1'
-        assert paths[1] == '2'
-        assert paths[2] == '3'
-
-
-    def test_get_data_from_path(self):
-        data = list(self.ds.get_data_from_path())
-        assert len(data) == 1500
-        for d in data:
-            assert isinstance(d, Image)
+        assert paths[0] == f'{self.path_dataset}\\1'
+        assert paths[1] == f'{self.path_dataset}\\2'
+        assert paths[2] == f'{self.path_dataset}\\3'
 
 
     def test_gen_rotate(self):
         self.ds.set_rotate(True)
-        data = list(self.ds.get_data())
+
+        assert self.ds.rotate == True
+
+        data = list(self.ds)
+
         assert len(data) == 1500 * 4
         for d in data:
+            if len(d) == 2:
+                d, l = d
+                assert isinstance(l, Label)
+
             assert isinstance(d, Image)
 
         self.ds.set_rotate(False)
+        assert self.ds.rotate == False
 
 
     def test_get_data_label(self):
         classes = {'1': [1, 0, 0], '2': [0, 1, 0], '3': [0, 0, 1]}
 
-        labels = Labels(lambda x: classes[x.path_data], 
+        def get_label(x):
+            path = str(x.path_data).split(os.path.sep)[-1]
+            return classes[path]
+
+        labels = Labels(lambda x: get_label(x), 
                         output_shape=3)
         
         self.ds.labels = labels
@@ -56,10 +69,23 @@ class TestDatasetImage:
 
         assert len(data) == 1500
         for d in data:
-            assert classes[d[0].path_data] == d[1].get()
+            assert get_label(d[0]) == d[1].get()
             assert isinstance(d[0], Image)
             assert isinstance(d[1], Label)
 
+    def test_shuffle(self):
+        self.ds.set_shuffle_path(True)
+        assert self.ds.get_shuffle_path() == True
+    
+        data = list(self.ds)
+
+        assert self.ds.rotate == False
+        assert len(data) == 1500
+
+        self.test_gen_rotate()
+
+        self.ds.set_shuffle_path(False)
+        assert self.ds.get_shuffle_path() == False
 
 
     def test_get_output_shape(self):

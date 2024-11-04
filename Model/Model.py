@@ -156,7 +156,7 @@ class ModelClassification(Model):
         ])
 
         handler = HandlerDataset(dataset, transform=transform)
-        loader = DataLoader(handler, batch_size=batch_size)
+        loader = DataLoader(handler, batch_size=batch_size, shuffle=True)
 
         criterion = nn.CrossEntropyLoss()
         scheduler = ReduceLROnPlateau(self.optimizer, mode='min', factor=0.5, patience=2, verbose=True)  # Scheduler
