@@ -113,7 +113,7 @@ class DatasetImage(Dataset):
     def set_extension(self, extension: Union[str, set]):
         if isinstance(extension, str):
             extension = {extension}
-            
+
         self.extension = set(extension) if not isinstance(extension, set) else extension
 
     def set_rotate(self, rotate: bool):
@@ -142,7 +142,7 @@ class DatasetImage(Dataset):
 
         for root, _, files in walk(path):
             for file in files:
-                if not any([file.endswith(ext) for ext in self.extension]):
+                if not any(file.endswith(ext) for ext in self.extension):
                     continue
 
                 yield Image(join(root, file), desired_size=self.desired_size)
