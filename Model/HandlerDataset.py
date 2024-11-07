@@ -36,7 +36,7 @@ class HandlerDataset(_Dataset):
     
     def retart_loader(self):
         self.clear()
-        self.set_real_idx()
+        self.set_real_idx(0)
         self.generater_data = self.start_loader(self.dataset.get_loader())
 
     def update_data(self, data):

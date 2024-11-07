@@ -263,18 +263,22 @@ class TextFieldDetectorSSD(Model):
                 self.optimizer.step()
 
                 running_loss += loss.item()
+
+            running_loss /= len(train_loader)
             
-            self.log["INFO"](f"Epoch {self.epoch+1}/{epochs}, Loss: {running_loss/len(train_loader)}")
+            self.log["INFO"](f"Epoch {self.epoch+1}/{epochs}, Loss: {running_loss}")
 
             self.epoch += 1
 
             if running_loss < self.best_loss:
                 self.save_best(running_loss)
                 self.best_loss = running_loss
-        
-        self.loss = running_loss / len(train_loader)
+            
+            self.loss += running_loss
+            scheduler.step(running_loss)
+            running_loss = 0
 
-        scheduler.step(self.loss)
+        self.loss /= epochs
 
         self.save_last(self.loss)
 
