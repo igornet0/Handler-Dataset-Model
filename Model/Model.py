@@ -42,20 +42,22 @@ class Model(nn.Module):
         self._save = save
         self.log["INFO"](f"Save model: {self.save}")
     
-    def save(self, checkpoint_path, message=""):
+    def save(self, model, optimizer, checkpoint_path, message=""):
         if not self._save:
             return
         
-        if self.model is None or self.optimizer is None:
+        if model is None or optimizer is None:
             self.log["ERROR"]("Model or optimizer is not initialized")
-            raise Exception("Model is not initialized") if self.model is None else Exception("Optimizer is not initialized")
+            raise Exception("Model is not initialized") if model is None else Exception("Optimizer is not initialized")
 
+        if not os.path.exists(os.path.dirname(checkpoint_path)):
+            os.makedirs(os.path.dirname(checkpoint_path))
         
         # Save model state, optimizer state, and epoch information
         torch.save({
             'epoch': self.epoch + 1,
-            'model_state_dict': self.model.state_dict(),
-            'optimizer_state_dict': self.optimizer.state_dict(),
+            'model_state_dict': model.state_dict(),
+            'optimizer_state_dict': optimizer.state_dict(),
             'loss': self.loss,
             'best_loss': self.best_loss
         }, checkpoint_path)
@@ -65,16 +67,16 @@ class Model(nn.Module):
         else:
             self.log["INFO"](f"Saved with loss {self.loss:.4f} at epoch {self.epoch+1} and checkpoint path: {checkpoint_path}")
         
-    def save_best(self, best_loss, checkpoint_dir="checkpoints"):
+    def save_best(self, model, optimizer, best_loss, checkpoint_dir="checkpoints"):
         checkpoint_path = os.path.join(checkpoint_dir, f"best_{self.epoch + 1}_{self.name_model}")
         
-        return self.save(checkpoint_path, 
+        return self.save(model, optimizer, checkpoint_path, 
                          message=f"Saved with best loss {best_loss:.4f} at epoch {self.epoch+1} and checkpoint path: {checkpoint_path}")
 
-    def save_last(self, checkpoint_dir="checkpoints"):
+    def save_last(self, model, optimizer, checkpoint_dir="checkpoints"):
         checkpoint_path = os.path.join(checkpoint_dir, f"last_{self.epoch + 1}_{self.name_model}")
         
-        return self.save(checkpoint_path, 
+        return self.save(model, optimizer, checkpoint_path, 
                          message=f"Saved with loss {self.loss:.4f} at epoch {self.epoch+1} and checkpoint path: {checkpoint_path}")
 
     def load(self, checkpoint_path):
@@ -147,6 +149,7 @@ class ModelClassification(Model):
         x = self.fc2(x)
 
         return nn.Softmax(dim=1)(x)
+    
     def train_in_dataset(self, dataset: Dataset, batch_size=32, epochs=10, test: bool=False):
         
         self.to(self.device)
@@ -156,7 +159,7 @@ class ModelClassification(Model):
         ])
 
         handler = HandlerDataset(dataset, transform=transform)
-        loader = DataLoader(handler, batch_size=batch_size, shuffle=True)
+        loader = DataLoader(handler, batch_size=batch_size)
 
         criterion = nn.CrossEntropyLoss()
         scheduler = ReduceLROnPlateau(self.optimizer, mode='min', factor=0.5, patience=2, verbose=True)  # Scheduler
@@ -187,7 +190,7 @@ class ModelClassification(Model):
             self.epoch += 1
 
             if running_loss < self.best_loss:
-                self.save_best(running_loss)
+                self.save_best(self, self.optimizer, running_loss)
                 self.best_loss = running_loss
             
             scheduler.step(running_loss)
@@ -195,7 +198,7 @@ class ModelClassification(Model):
             self.loss = running_loss
             running_loss = 0
 
-        self.save_last()
+        self.save_last(self, self.optimizer)
 
         self.eval()
 
