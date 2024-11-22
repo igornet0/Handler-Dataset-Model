@@ -44,7 +44,7 @@ class Data:
 class Image(Data):
 
     def __init__(self, data: Union[str, Generator], args: tuple = None, 
-                 desired_size: tuple = None):
+                 desired_size: tuple = ()):
         
         """
         Args:
@@ -68,14 +68,14 @@ class Image(Data):
         
         super().__init__(data, args)
 
-        if desired_size is None:
+        if not desired_size:
             desired_size = data.shape
 
         elif len(desired_size) != len(data.shape):
             raise Exception(f"Desired shape {desired_size} does not match data shape {data.shape}")
 
         self.path_data = path_data.parent
-        self.image_file = path_data.stem
+        self.name_file = path_data.stem
         self.extension = path_data.suffix
             
         self.desired_size = desired_size
@@ -131,12 +131,12 @@ class File(Data):
 
     def __init__(self, data:str):
         
-        if os.path.exists(data):
-            data = os.path.abspath(data)
-        else:
+        if not os.path.exists(data):
             raise ValueError(f"Path {data} does not exist")
+            
+        path_data = Path(data)
 
-        super().__init__(data)
+        super().__init__(path_data)
         
 
     def get_file_data(self, path: str) -> Generator:

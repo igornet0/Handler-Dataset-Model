@@ -1,3 +1,6 @@
-from .Model import ModelClassification, TextFieldDetectorSSD
+from .Model import ModelClassification, PolygonDetectorSSD
+from .HandlerDataset import HandlerDataset
+from .HandlerModel import HandlerModel
 
-__all__ = ["ModelClassification", "TextFieldDetectorSSD"]
+__all__ = ["ModelClassification", "PolygonDetectorSSD",
+           "HandlerDataset", "HandlerModel"]

@@ -68,7 +68,7 @@ class HandlerDataset(_Dataset):
                 self.set_real_idx(self.real_idx + self.buffer_size)
             
             if len(data) == 2:
-                label = self.update_label(torch.tensor(data[1]).float())
+                label = self.update_label(data[1])
                 data = self.update_data(data[0])
             else:
                 data = self.update_data(data)

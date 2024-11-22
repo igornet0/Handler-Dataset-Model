@@ -34,7 +34,7 @@ class Dataset:
 
 
     def get_label(self, data: Data) -> Label:
-        return self.labels[data].get_label()
+        return self.labels[data]
 
 
     def get_data_label(self) -> iter:
@@ -45,11 +45,11 @@ class Dataset:
 
             label = self.get_label(data)
 
-            if label is None:
+            if not label.get():
                 continue
 
             yield data, label
-
+            
 
     def get_bath(self, batch_size: int = 32, shuffle: bool = True) -> iter:
         bath = []
@@ -89,7 +89,7 @@ class DatasetImage(Dataset):
 
     def __init__(self, data_path: str, labels: Labels = None, 
                  extension: Union[str, set] = ".png", 
-                 desired_size: tuple = None, rotate: bool = False,
+                 desired_size: tuple = (), rotate: bool = False,
                  shuffle_path: bool = False, test_size: float = 0.2):
 
         if not os.path.exists(data_path):
@@ -147,6 +147,7 @@ class DatasetImage(Dataset):
 
     def get_path_images(self):
         for path_data in listdir(self.data_path):
+            
             yield join(self.data_path, path_data)
 
     def get_data_from_path_shuffle(self) -> iter:
@@ -179,10 +180,13 @@ class DatasetImage(Dataset):
         return self.desired_size
     
     def get_col_files(self):
-        return sum([len(files) for _, _, files in walk(self.data_path)])
+        if not self.labels is None and isinstance(self.labels, LabelsFile):
+            return sum([len(list(filter(lambda file: file.endswith(self.labels.get_extension()), files))) for _, _, files in walk(self.data_path)])
+        
+        return sum([len(list(filter(lambda file: any(file.endswith(ext) for ext in self.extension), files))) for _, _, files in walk(self.data_path)])
         
     def __len__(self):
-        col = self.get_col_files()
+        col  = self.get_col_files()
         if self.rotate:
             col *= 4
         

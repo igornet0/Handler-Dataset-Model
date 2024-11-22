@@ -1,1 +1,0 @@
-Hello world my name is {user.get_name()}, welcome !
